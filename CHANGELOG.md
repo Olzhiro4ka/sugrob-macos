@@ -45,6 +45,15 @@ All notable changes to this project are documented here. The format follows
   the overview. Stage Manager thumbnails don't collect snow.
 - `--settings` launch flag; HUD shows settled snow mass and logs pauses with a count of frames
   presented while paused (always 0).
+- App icon (drawn by `scripts/make_icon.swift`); the version is shown in Settings.
+- Release packaging: `make app` builds a universal (arm64 + x86_64) app, `make dmg` packs a
+  drag-to-Applications `.dmg`, a `.zip` and SHA-256 checksums. Developer ID builds are signed
+  with the hardened runtime.
+- GitHub Actions: CI (build, test, universal bundle, privacy guard) on pushes and pull
+  requests; Release on `v*` tags, with signing and notarization when secrets are configured
+  and ad-hoc signing otherwise.
+- README in English and Russian, CONTRIBUTING, issue and pull request templates, Homebrew
+  cask template in `packaging/`.
 
 ### Changed
 - Settled caps skip relaxation until something changes them.

@@ -1,0 +1,44 @@
+name: Bug report
+description: Something looks wrong, costs too much CPU, or gets in the way.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead. A screen recording helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Turn on Blizzard
+        2. Drag a Finder window quickly to the left
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Sugrob version
+      description: Shown at the bottom of Settings… in the menu bar menu.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac model
+      placeholder: macOS 26.1, MacBook Air M4
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Display and Dock setup
+      description: Number of displays, resolution and scaling, Dock position, size and autohide, and whether Stage Manager is on.
+  - type: textarea
+    id: hud
+    attributes:
+      label: HUD log (for performance issues)
+      description: "Run `/Applications/Sugrob.app/Contents/MacOS/Sugrob --hud 2> ~/Desktop/sugrob-hud.log` for a minute and paste the file."
+      render: text

@@ -87,12 +87,15 @@ Tests/
   SnowCoreTests/
 scripts/
   bundle.sh          # builds Sugrob.app into build/
-  make_dmg.sh        # optional
+  make_dmg.sh        # .dmg + .zip + .sha256 for releases
+  make_icon.swift    # regenerates Resources/AppIcon.icns (and copy AppIcon.png for the README)
 Resources/
-  Info.plist, AppIcon.icns
-.github/workflows/   # ci.yml (build+test on PR), release.yml (on tag v*)
+  Info.plist, AppIcon.icns, AppIcon.png
+.github/workflows/   # ci.yml (build+test on push/PR), release.yml (on tag v*)
+.github/ISSUE_TEMPLATE/, pull_request_template.md
+packaging/sugrob.rb  # Homebrew cask template for a personal tap
 Makefile
-README.md, README.ru.md, LICENSE (MIT), CHANGELOG.md
+README.md, README.ru.md, CONTRIBUTING.md, LICENSE (MIT), CHANGELOG.md
 ```
 
 ## Commands
@@ -102,7 +105,7 @@ make build      # swift build -c debug
 make test       # swift test
 make run        # build debug .app and open it (kills previous instance first)
 make app        # release universal .app in build/Sugrob.app
-make dmg        # zip/dmg for GitHub Releases
+make dmg        # build/Sugrob-<version>.zip + .dmg + .sha256 for GitHub Releases
 make clean
 ```
 
@@ -247,6 +250,18 @@ Frame rate is a mode rather than a cap: *Balanced* (30 idle / 60 active, default
 *Smooth* (always 60, ~2× CPU), *Efficient* (never above 30).
 The Settings window is torn down on close so SwiftUI's memory (~15 MB) is returned.
 
+## Release
+
+- `VERSION` comes from the latest `v*` tag (`scripts/bundle.sh`), the build number from the
+  commit count. `make dmg` writes `build/Sugrob-<version>.{dmg,zip,sha256}`.
+- CI and Release run on `macos-15` (tools-version 6.0 needs Xcode 16; `macos-14` ships 15.x).
+- Release (`v*` tag): tests → optional Developer ID import → `make app` (hardened runtime when
+  `SIGN_IDENTITY` is a real identity) → optional notarize + staple app → dmg → optional
+  notarize + staple dmg → GitHub release with the CHANGELOG section (falls back to
+  `[Unreleased]`) and Gatekeeper instructions when not notarized. Secrets are listed in
+  CONTRIBUTING.md. Tags with `-` become pre-releases.
+- CI greps `Sources/` for `kCGWindowName` and network APIs and fails if found.
+
 ## Conventions
 
 - Code, comments, commit messages, README: **English**. `README.ru.md` mirrors README.
@@ -322,3 +337,8 @@ The Settings window is torn down on close so SwiftUI's memory (~15 MB) is return
   resized, menu bar auto-hidden). `ScreenManager` rebuilds overlays only when screen frames or
   scale factors actually changed.
 - Profile with `sample <pid> 5 -file out.txt` (no permission needed for our own process).
+- The display link does not fire while the display sleeps, so a `--hud` run started then logs
+  nothing (no `[pause]` either: no notification arrives for a state that began before launch).
+  Check `pmset -g log | grep "Display is"` before blaming the build.
+- Settings can be overridden for one run through the argument domain, e.g.
+  `Sugrob --hud -snowEnabled YES`, without touching the user's saved defaults.

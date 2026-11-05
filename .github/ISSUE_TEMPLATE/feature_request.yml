@@ -1,0 +1,20 @@
+name: Feature request
+description: An idea that keeps Sugrob light, private and out of the way.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you'd like and why. How should it look or behave?
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Ground rules
+      options:
+        - label: It needs no network access.
+          required: true
+        - label: It needs no permission prompt in the default configuration.
+          required: true
