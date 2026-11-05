@@ -60,7 +60,12 @@ if [[ -f Resources/AppIcon.icns ]]; then
   plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
 fi
 
-codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  codesign --force --sign - --timestamp=none "$APP"
+else
+  # Developer ID: hardened runtime and a secure timestamp are required for notarization.
+  codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$APP"
+fi
 codesign --verify --strict "$APP"
 
 echo "Built $APP (version $VERSION, build $BUILD_NUMBER, $CONFIG$([[ $UNIVERSAL == 1 ]] && echo ', universal'))"
