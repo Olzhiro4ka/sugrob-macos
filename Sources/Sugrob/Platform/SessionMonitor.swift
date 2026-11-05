@@ -9,6 +9,10 @@ enum PauseReason: Hashable {
     case displaysAsleep
     case sessionInactive
     case poweringOff
+    /// "Pause on battery power" is on and the Mac runs on battery.
+    case onBattery
+    /// Mission Control / App Exposé is showing (and a short grace period after it closes).
+    case missionControl
     /// Every screen shows a fullscreen app (per-screen hiding handles the partial case).
     case allFullscreen
 }

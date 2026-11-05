@@ -85,6 +85,8 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
     private(set) var lastCapSegments = 0
     /// Frames skipped because every ring buffer was still in flight (count, for the HUD).
     private(set) var droppedFrames = 0
+    /// Frames committed to the GPU since launch (count); used to prove pauses do no GPU work.
+    private(set) var presentedFrames = 0
 
     init?(gpu: SnowGPU, world: World, screen: NSScreen) {
         self.gpu = gpu
@@ -163,6 +165,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         // `@Sendable` so the closure does not inherit main-actor isolation: Metal calls it on its own queue.
         commandBuffer.addCompletedHandler { @Sendable _ in semaphore.signal() }
         commandBuffer.commit()
+        presentedFrames += 1
         lastFrameHadContent = hasContent
     }
 
@@ -221,7 +224,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         for cap in world.caps where cap.isPresent && !cap.visible.isEmpty {
             let frame = cap.frame
             guard frame.maxX > screen.minX, frame.minX < screen.maxX,
-                  frame.maxY + Config.capMaxHeight + 2 > screen.minY,
+                  frame.maxY + cap.maxHeight + 2 > screen.minY,
                   frame.maxY - cap.cornerRadius - 2 < screen.maxY
             else { continue }
             let heights = cap.heights

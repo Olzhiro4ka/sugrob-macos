@@ -28,6 +28,8 @@ final class HUD {
         var poll: Double?
         var flakes: Int
         var debris: Int
+        /// Settled snow (pt²).
+        var snow: Float
         var windows: Int
         var caps: Int
         var segments: Int
@@ -83,8 +85,8 @@ final class HUD {
             renderSum / Double(frames) * 1000, renderMax * 1000
         )
         let line2 = String(
-            format: "flakes %d · debris %d · windows %d · caps %d · segments %d · cpu %.1f%% · mem %.1f MB",
-            frame.flakes, frame.debris, frame.windows, frame.caps, frame.segments,
+            format: "flakes %d · debris %d · snow %.0f pt² · windows %d · caps %d · segments %d · cpu %.1f%% · mem %.1f MB",
+            frame.flakes, frame.debris, frame.snow, frame.windows, frame.caps, frame.segments,
             cpuPercent, ProcessStats.footprintMegabytes()
         )
         label.stringValue = " " + line1 + " \n " + line2 + " "

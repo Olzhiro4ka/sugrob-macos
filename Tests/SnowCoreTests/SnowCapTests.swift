@@ -135,6 +135,25 @@ struct SnowCapTests {
         #expect(abs(cap.mass - 12) < 1e-2)
     }
 
+    @Test func loweringMaxHeightTrimsSnow() {
+        let cap = makeCap()
+        cap.fill(fraction: 1)
+        cap.setMaxHeight(6)
+        #expect(cap.heights.max()! <= 6 + 1e-3)
+        var spills: [SnowSpill] = []
+        for _ in 0..<1000 {
+            cap.deposit(at: 300, amount: 12)
+            cap.relax(dt: 1.0 / 30, spills: &spills)
+        }
+        #expect(cap.heights.max()! <= 6 + 1e-3)
+        cap.setMaxHeight(20)
+        for _ in 0..<3000 {
+            cap.deposit(at: 300, amount: 12)
+            cap.relax(dt: 1.0 / 30, spills: &spills)
+        }
+        #expect(cap.heights.max()! > 12)
+    }
+
     @Test func capsSettleAndWakeOnChange() {
         let cap = makeCap()
         cap.fill(fraction: 0.5)

@@ -23,6 +23,17 @@ public final class World {
     public var instantSnow = false
     /// Whether flakes settle on windows.
     public var snowOnWindows = true
+    /// Maximum drift height (pt), clamped to `Config.capMaxHeightRange`.
+    public var maxDriftHeight: Float = Config.capMaxHeight {
+        didSet {
+            maxDriftHeight = min(max(maxDriftHeight, Config.capMaxHeightRange.lowerBound), Config.capMaxHeightRange.upperBound)
+            for cap in caps { cap.setMaxHeight(maxDriftHeight) }
+        }
+    }
+    /// Wind multiplier, clamped to `Config.windScaleRange`.
+    public var windScale: Float = 1 {
+        didSet { windScale = min(max(windScale, Config.windScaleRange.lowerBound), Config.windScaleRange.upperBound) }
+    }
     /// Whether the Dock carries snow. Turning it off drops the Dock's snow.
     public var snowOnDock = true {
         didSet { if !snowOnDock { setDock(nil) } }
@@ -60,7 +71,7 @@ public final class World {
         for id in changes.appeared where capsByID[id] == nil && capsByID.count < Config.maxCaps {
             guard let entry = windows.entries[id] else { continue }
             let cap = SnowCap(id: id, frame: entry.frame, cornerRadius: windowCornerRadius,
-                              lumpPhase: rng.nextUnit() * 2 * Float.pi)
+                              lumpPhase: rng.nextUnit() * 2 * Float.pi, maxHeight: maxDriftHeight)
             if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
             capsByID[id] = cap
         }
@@ -79,7 +90,7 @@ public final class World {
         if let frame {
             if dockCap == nil {
                 let cap = SnowCap(id: Self.dockCapID, frame: frame, cornerRadius: Config.dockCornerRadius,
-                                  lumpPhase: rng.nextUnit() * 2 * Float.pi)
+                                  lumpPhase: rng.nextUnit() * 2 * Float.pi, maxHeight: maxDriftHeight)
                 if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
                 dockCap = cap
             }
@@ -98,6 +109,9 @@ public final class World {
     /// Seconds since a window last moved, resized, appeared, disappeared or changed z-order.
     public var timeSinceWindowChange: Float { time - windows.lastChangeTime }
 
+    /// All settled snow (pt²), for the HUD.
+    public var settledMass: Float { caps.reduce(0) { $0 + $1.mass } }
+
     /// Whether anything is moving fast enough to deserve the high frame rate.
     public var isBusy: Bool { debris.count > 0 || windows.anyMoving }
 
@@ -112,7 +126,7 @@ public final class World {
     public func step(dt: Float) {
         let dt = min(max(dt, 0), Config.maxStep)
         time += dt
-        wind = Wind.velocity(at: time)
+        wind = Wind.velocity(at: time) * windScale
 
         updateCapGeometry()
         applyBrush(dt: dt)
@@ -162,7 +176,7 @@ public final class World {
             frames.append(windows.frame(of: id) ?? Rect(x: 0, y: 0, width: 0, height: 0))
             present.append(windows.entries[id]?.isPresent ?? false)
         }
-        let visible = Occlusion.visibleIntervals(frames: frames, present: present)
+        let visible = Occlusion.visibleIntervals(frames: frames, present: present, band: maxDriftHeight)
         if let dockCap, let dockFrame {
             dockCap.update(frame: dockFrame, spills: &spills)
             dockCap.visible = visible[0]
@@ -205,7 +219,7 @@ public final class World {
             let frame = cap.frame
             guard current.x >= frame.minX, current.x <= frame.maxX,
                   previous.y >= frame.maxY - cap.cornerRadius,
-                  current.y <= frame.maxY + Config.capMaxHeight,
+                  current.y <= frame.maxY + cap.maxHeight,
                   time - cap.lastMoveTime >= Config.settleDelay,
                   Intervals.contains(cap.visible, current.x),
                   let surface = cap.surfaceY(at: current.x),

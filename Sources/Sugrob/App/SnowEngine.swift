@@ -9,6 +9,9 @@ final class SnowEngine: NSObject {
     private let tracker = WindowTracker()
     private let session = SessionMonitor()
     private let dock: DockLocator
+    private let power = PowerMonitor()
+    private var frameRateMode = FrameRateMode.balanced
+    private var pauseOnBattery = false
     private let hud: HUD?
     /// `--fps N` override.
     private let fixedFPS: Int?
@@ -21,11 +24,14 @@ final class SnowEngine: NSObject {
     private var completedPollSeconds: Double?
     private var currentFPS = Config.idleFPS
     private var pauseReasons: Set<PauseReason> = []
-    /// Low-rate poll that runs only while every screen is fullscreen (tick stopped), to notice
-    /// when the user leaves fullscreen.
-    private var fullscreenWatch: Timer?
+    /// Poll that runs only while the tick is stopped for window-state reasons (fullscreen
+    /// everywhere, Mission Control), to notice when that ends.
+    private var watchTimer: Timer?
+    private var watchInterval: TimeInterval = 0
+    /// Pause reasons that come from the window list itself and need the watch poll to clear.
+    private static let windowStateReasons: Set<PauseReason> = [.allFullscreen, .missionControl]
 
-    init?(options: LaunchOptions) {
+    init?(options: LaunchOptions, settings: SettingsStore) {
         guard let gpu = SnowGPU() else { return nil }
         let seed = options.seed ?? (UInt64(Date().timeIntervalSince1970 * 1000) ^ Config.defaultSeed)
         world = World(seed: seed)
@@ -45,12 +51,40 @@ final class SnowEngine: NSObject {
         session.onChange = { [weak self] reason, active in self?.setPaused(reason, active) }
         session.onSpaceChange = { [weak self] in self?.nextPoll = 0 }
         dock.onChange = { [weak self] frame in self?.world.setDock(frame) }
-        dock.preciseMode = options.preciseDock
+        power.onChange = { [weak self] _ in self?.updateBatteryPause() }
+        apply(settings, preciseDockOverride: options.preciseDock)
         dock.refresh()
         overlaysRebuilt()
     }
 
     var isPaused: Bool { !pauseReasons.isEmpty }
+
+    /// Applies user settings live.
+    func apply(_ settings: SettingsStore?, preciseDockOverride: Bool = false) {
+        guard let settings else { return }
+        world.intensity = settings.intensity
+        world.snowOnWindows = settings.snowOnWindows
+        if !settings.snowOnWindows {
+            for cap in world.caps where cap.id != World.dockCapID { cap.clear() }
+        }
+        world.snowOnDock = settings.snowOnDock
+        if settings.snowOnDock { world.setDock(dock.frame) }
+        world.maxDriftHeight = Float(settings.maxDriftHeight)
+        world.windScale = Float(settings.windStrength)
+        frameRateMode = settings.frameRate
+        pauseOnBattery = settings.pauseOnBattery
+        dock.preciseMode = settings.preciseDock || preciseDockOverride
+        updateBatteryPause()
+        setPaused(.userDisabled, !settings.isSnowEnabled)
+    }
+
+    func clearSnow() {
+        world.clearSnow()
+    }
+
+    private func updateBatteryPause() {
+        setPaused(.onBattery, pauseOnBattery && power.isOnBattery)
+    }
 
     func setPaused(_ reason: PauseReason, _ active: Bool) {
         let wasPaused = isPaused
@@ -59,7 +93,7 @@ final class SnowEngine: NSObject {
         } else {
             pauseReasons.remove(reason)
         }
-        updateFullscreenWatch()
+        updateWatch()
         guard wasPaused != isPaused else { return }
         applyPauseState()
     }
@@ -67,8 +101,9 @@ final class SnowEngine: NSObject {
     func shutdown() {
         displayLink?.invalidate()
         displayLink = nil
-        fullscreenWatch?.invalidate()
+        watchTimer?.invalidate()
         dock.stop()
+        power.stop()
     }
 
     // MARK: Tick
@@ -99,7 +134,7 @@ final class SnowEngine: NSObject {
         hud?.record(HUD.Frame(
             interval: dt, drops: screens.droppedFrames,
             tick: simulated - start, render: rendered - simulated, poll: completedPollSeconds,
-            flakes: world.flakes.count, debris: world.debris.count, windows: world.windows.order.count,
+            flakes: world.flakes.count, debris: world.debris.count, snow: world.settledMass, windows: world.windows.order.count,
             caps: world.caps.count, segments: screens.lastCapSegments, fps: currentFPS
         ))
         completedPollSeconds = nil
@@ -111,13 +146,36 @@ final class SnowEngine: NSObject {
     private func requestPoll() {
         guard !pollInFlight else { return }
         pollInFlight = true
-        tracker.poll(primaryHeight: CoordinateSpace.primaryHeight) { [weak self] samples, duration in
+        tracker.poll(primaryHeight: CoordinateSpace.primaryHeight) { [weak self] result in
             guard let self else { return }
             pollInFlight = false
-            completedPollSeconds = duration
+            completedPollSeconds = result.duration
+            handleMissionControl(result.missionControl)
+            // Ignore window geometry while paused for anything but fullscreen: during Mission
+            // Control frames are scaled down and would look like every window jumped.
             guard !isPaused || pauseReasons == [.allFullscreen] else { return }
-            world.ingestWindows(samples)
-            detectFullscreen(samples)
+            world.ingestWindows(result.samples)
+            detectFullscreen(result.samples)
+        }
+    }
+
+    private var missionControlEnding = false
+
+    private func handleMissionControl(_ showing: Bool) {
+        if showing {
+            missionControlEnding = false
+            if !pauseReasons.contains(.missionControl) { setPaused(.missionControl, true) }
+        } else if pauseReasons.contains(.missionControl), !missionControlEnding {
+            // Windows animate back to their frames; resume once they're home.
+            missionControlEnding = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.missionControlEnding else { return }
+                    self.missionControlEnding = false
+                    self.nextPoll = 0
+                    self.setPaused(.missionControl, false)
+                }
+            }
         }
     }
 
@@ -135,18 +193,23 @@ final class SnowEngine: NSObject {
         }
     }
 
-    private func updateFullscreenWatch() {
-        let watch = pauseReasons == [.allFullscreen]
-        if watch, fullscreenWatch == nil {
-            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+    private func updateWatch() {
+        let reasons = pauseReasons
+        let needsWatch = !reasons.isEmpty && reasons.isSubset(of: Self.windowStateReasons)
+        // Mission Control needs a quick reaction when it closes; fullscreen can be lazier.
+        let interval: TimeInterval = reasons.contains(.missionControl) ? 0.25 : 1
+        if needsWatch, watchTimer == nil || watchInterval != interval {
+            watchTimer?.invalidate()
+            let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.requestPoll() }
             }
-            timer.tolerance = 0.3
+            timer.tolerance = interval * 0.3
             RunLoop.main.add(timer, forMode: .common)
-            fullscreenWatch = timer
-        } else if !watch {
-            fullscreenWatch?.invalidate()
-            fullscreenWatch = nil
+            watchTimer = timer
+            watchInterval = interval
+        } else if !needsWatch {
+            watchTimer?.invalidate()
+            watchTimer = nil
         }
     }
 
@@ -165,14 +228,30 @@ final class SnowEngine: NSObject {
         applyPauseState()
     }
 
+    /// Presented-frame count when the current pause began; nil while running.
+    private var framesAtPause: Int?
+
     private func applyPauseState() {
         displayLink?.isPaused = isPaused
         lastTimestamp = nil
         screens.setVisible(!isPaused)
+        guard hud != nil else { return }
+        // Proof for the "no GPU work while paused" budget line.
+        if isPaused {
+            if framesAtPause == nil { framesAtPause = screens.presentedFrames }
+            log("[pause] \(pauseReasons.map { "\($0)" }.sorted().joined(separator: ","))")
+        } else if let start = framesAtPause {
+            framesAtPause = nil
+            log("[resume] frames presented while paused: \(screens.presentedFrames - start)")
+        }
+    }
+
+    private func log(_ line: String) {
+        FileHandle.standardError.write(Data((line + "\n").utf8))
     }
 
     private func updateFrameRate(active: Bool) {
-        let fps = fixedFPS ?? (active ? Config.activeFPS : Config.idleFPS)
+        let fps = fixedFPS ?? frameRateMode.fps(active: active)
         if fps != currentFPS { setFrameRate(fps) }
     }
 

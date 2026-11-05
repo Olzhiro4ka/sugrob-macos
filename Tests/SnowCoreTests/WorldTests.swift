@@ -216,6 +216,31 @@ struct WorldTests {
         #expect(world.dockFrame == nil)
     }
 
+    @Test func settingsAreClampedAndApplied() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.maxDriftHeight = 100
+        #expect(world.maxDriftHeight == Config.capMaxHeightRange.upperBound)
+        world.maxDriftHeight = 7
+        #expect(world.caps[0].maxHeight == 7)
+        world.windScale = -3
+        #expect(world.windScale == 0)
+        world.step(dt: 1.0 / 30)
+        #expect(world.wind == 0)
+    }
+
+    @Test func clearSnowRemovesEverything() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        world.step(dt: 1.0 / 30)
+        world.clearSnow()
+        #expect(world.caps.allSatisfy { $0.mass == 0 })
+        #expect(world.debris.count == 0)
+    }
+
     @Test func debrisIsBoundedAndDies() {
         var rng = SplitMix64(seed: 1)
         var pool = DebrisPool(capacity: 100)

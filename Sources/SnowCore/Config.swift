@@ -64,9 +64,11 @@ public enum Config {
 
     /// Horizontal distance between heightmap columns (pt).
     public static let capColumnSpacing: Float = 2
-    /// Maximum cap height (pt). Each column gets a lumpy ceiling between
-    /// `capMaxHeight * capCeilingLumpiness` and `capMaxHeight`.
+    /// Default maximum cap height (pt); user-adjustable within `capMaxHeightRange`. Each column
+    /// gets a lumpy ceiling between `maxHeight * capCeilingLumpiness` and `maxHeight`.
     public static let capMaxHeight: Float = 12
+    /// Allowed range of the user's "max drift height" setting (pt).
+    public static let capMaxHeightRange: ClosedRange<Float> = 6...20
     /// Lower bound of the per-column ceiling as a fraction of `capMaxHeight`.
     public static let capCeilingLumpiness: Float = 0.75
     /// Wavelength of the ceiling lumps (pt).
@@ -90,6 +92,8 @@ public enum Config {
     public static let capEdgeHold: Float = 0.4
     /// Vertical band above a top edge that a front window must touch to hide that cap (pt).
     public static let occlusionBand: Float = capMaxHeight
+    /// Allowed range of the user's wind multiplier (× `windBase`/`windGust`).
+    public static let windScaleRange: ClosedRange<Float> = 0...2
     /// `--instant-snow` fills caps to this fraction of their ceiling.
     public static let instantSnowFill: Float = 0.9
     /// Hard bound on simultaneously tracked caps (count).

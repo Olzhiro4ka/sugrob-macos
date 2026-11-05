@@ -111,7 +111,9 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - `--hud` shows fps, flake/debris counts, ms per tick, window-poll ms;
 - `--instant-snow` pre-fills all caps (for demos and screenshots);
 - `--seed N` makes the RNG deterministic;
-- `--fps N` fixes the render rate (idle and active) to compare smoothness against CPU.
+- `--fps N` fixes the render rate (idle and active) to compare smoothness against CPU;
+- `--precise-dock` turns on the opt-in Accessibility Dock measurement for this run;
+- `--settings` opens the Settings window at launch.
 
 ## Architecture
 
@@ -156,6 +158,13 @@ Debug flags (launch args, also via `make run ARGS="..."`):
   `ownerPID != own pid`, width ≥ 80 and height ≥ 40.
 - The call runs on a **background serial queue** (it is an IPC round trip to the WindowServer);
   results are applied on the main actor between ticks. At most one poll in flight.
+- Ignore layer-0 windows owned by the Dock and `com.apple.WindowManager` (Stage Manager
+  thumbnails are not real windows). Identified by PID via `NSRunningApplication`.
+- **Mission Control / App Exposé:** detected when Dock-owned windows on layers 18/20 are on
+  screen. While it shows, window frames are reported *scaled down*, so polls are not ingested
+  and snow pauses (overlays hidden); a 0.25 s watch poll notices the end, and snow resumes
+  0.6 s later once windows have animated home. Without this, every window looks like it
+  jumped and all snow would shed.
 - Identify windows by `kCGWindowNumber`. Each tick produce `TrackedWindow { id, frame, zIndex,
   velocity, sizeDelta, appeared, disappeared }`. Velocity = smoothed position delta / dt.
 - A window's **snow surface** is its top edge, inset by the macOS corner radius
@@ -230,9 +239,13 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 ### Settings (menu bar)
 Menu: Snow on/off · Intensity (Light / Medium / Blizzard) · Snow on windows ✓ ·
 Snow on Dock ✓ · Clear all snow · Settings… · Quit.
-Settings window: intensity, max drift height, wind, fps cap (30/60), pause on battery,
-launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored in
-`UserDefaults` and applied live.
+Settings window: intensity, max drift height (6–20 pt), wind (0–2×), frame rate, pause on
+battery, launch at login (`SMAppService.mainApp`, not stored: the system is the source of
+truth), opt-in precise Dock detection. Stored in `UserDefaults` (`SettingsStore`,
+`@Observable`) and applied live via `SnowEngine.apply`.
+Frame rate is a mode rather than a cap: *Balanced* (30 idle / 60 active, default),
+*Smooth* (always 60, ~2× CPU), *Efficient* (never above 30).
+The Settings window is torn down on close so SwiftUI's memory (~15 MB) is returned.
 
 ## Conventions
 
@@ -298,3 +311,6 @@ launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored 
   the whole screen, so they cannot be used to find the Dock pill.
 - Ad-hoc signed builds get a new code signature on every rebuild, so an Accessibility grant
   for `--precise-dock` may have to be re-approved after rebuilding.
+- While overlays are ordered out (paused), macOS releases their drawables: footprint drops
+  from ~120 MB to ~70 MB.
+- `--hud` logs `[pause] …` / `[resume] frames presented while paused: N`; N must be 0.

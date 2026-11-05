@@ -10,6 +10,8 @@ public struct LaunchOptions: Equatable, Sendable {
     public var seed: UInt64?
     /// `--precise-dock`: opt-in Accessibility measurement of the Dock (prompts for permission).
     public var preciseDock = false
+    /// `--settings`: open the Settings window at launch.
+    public var openSettings = false
     /// `--fps N`: fixed render rate (both idle and active), for comparing smoothness vs. CPU.
     public var fps: Int?
 
@@ -25,6 +27,7 @@ public struct LaunchOptions: Equatable, Sendable {
             case "--hud": hud = true
             case "--instant-snow": instantSnow = true
             case "--precise-dock": preciseDock = true
+            case "--settings": openSettings = true
             case "--seed":
                 if let value = iterator.next() { seed = UInt64(value) }
             case "--fps":

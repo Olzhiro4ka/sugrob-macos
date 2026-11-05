@@ -12,31 +12,58 @@ final class WindowTracker: Sendable {
     private let queue = DispatchQueue(label: "io.github.sugrob.window-tracker", qos: .userInitiated)
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
-    /// Polls off the main thread. `completion` receives normal windows front to back in AppKit
-    /// global points, plus the poll duration (s), on the main actor.
-    func poll(primaryHeight: Float, completion: @escaping @MainActor @Sendable ([WindowSample], Double) -> Void) {
+    struct Result: Sendable {
+        /// Normal windows, front to back, AppKit global points.
+        var samples: [WindowSample]
+        /// Mission Control (or App Exposé) is showing: the Dock puts full-screen windows on
+        /// layers 18/20 on screen, and other windows report their *scaled-down* frames.
+        var missionControl: Bool
+        /// Poll duration (s).
+        var duration: Double
+    }
+
+    /// System processes whose layer-0 windows are not real windows (Stage Manager thumbnails,
+    /// Dock overlays).
+    private static let systemBundleIDs = ["com.apple.dock", "com.apple.WindowManager"]
+
+    /// Polls off the main thread; `completion` runs on the main actor.
+    func poll(primaryHeight: Float, completion: @escaping @MainActor @Sendable (Result) -> Void) {
         let ownPID = ownPID
+        let dockPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
+            .map(\.processIdentifier))
+        let systemPIDs = Set(Self.systemBundleIDs.flatMap {
+            NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier)
+        })
         queue.async {
             let start = CACurrentMediaTime()
-            let samples = Self.read(primaryHeight: primaryHeight, ownPID: ownPID)
-            let duration = CACurrentMediaTime() - start
+            var result = Self.read(primaryHeight: primaryHeight, ownPID: ownPID,
+                                   dockPIDs: dockPIDs, systemPIDs: systemPIDs)
+            result.duration = CACurrentMediaTime() - start
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { completion(samples, duration) }
+                MainActor.assumeIsolated { completion(result) }
             }
         }
     }
 
-    private static func read(primaryHeight: Float, ownPID: pid_t) -> [WindowSample] {
+    private static func read(primaryHeight: Float, ownPID: pid_t,
+                             dockPIDs: Set<pid_t>, systemPIDs: Set<pid_t>) -> Result {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]]
-        else { return [] }
+        else { return Result(samples: [], missionControl: false, duration: 0) }
 
         let minSize = Config.minWindowSize
         var samples: [WindowSample] = []
+        var missionControl = false
         samples.reserveCapacity(list.count)
         for info in list {
-            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
-                  let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
+            guard let layer = info[kCGWindowLayer as String] as? Int,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t
+            else { continue }
+            if dockPIDs.contains(pid) && (layer == 18 || layer == 20) {
+                missionControl = true
+                continue
+            }
+            guard layer == 0, pid != ownPID, !systemPIDs.contains(pid),
                   let number = info[kCGWindowNumber as String] as? UInt32,
                   let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDictionary as CFDictionary)
@@ -47,6 +74,6 @@ final class WindowTracker: Sendable {
             else { continue }
             samples.append(WindowSample(id: number, frame: CoordinateSpace.core(fromCG: bounds, primaryHeight: primaryHeight)))
         }
-        return samples
+        return Result(samples: samples, missionControl: missionControl, duration: 0)
     }
 }

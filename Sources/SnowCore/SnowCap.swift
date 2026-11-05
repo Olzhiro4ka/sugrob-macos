@@ -34,6 +34,8 @@ public final class SnowCap {
     private var ceiling: [Float]
     public private(set) var spacing: Float
     public let cornerRadius: Float
+    /// Maximum snow height (pt); see `setMaxHeight`.
+    public private(set) var maxHeight: Float
     /// Visible x-intervals of the top edge (absolute pt), updated by the world.
     public internal(set) var visible: [Interval] = []
     /// Whether the window is currently in the window list.
@@ -48,10 +50,12 @@ public final class SnowCap {
     public private(set) var isSettled = false
     private var pendingIncoming = false
 
-    public init(id: UInt32, frame: Rect, cornerRadius: Float, lumpPhase: Float = 0) {
+    public init(id: UInt32, frame: Rect, cornerRadius: Float, lumpPhase: Float = 0,
+                maxHeight: Float = Config.capMaxHeight) {
         self.id = id
         self.frame = frame
         self.cornerRadius = cornerRadius
+        self.maxHeight = maxHeight
         self.lumpPhase = lumpPhase
         heights = []
         base = []
@@ -123,6 +127,22 @@ public final class SnowCap {
         isSettled = false
         var discard: [SnowSpill] = []
         for _ in 0..<200 { relax(dt: 1.0 / 30, spills: &discard) }
+    }
+
+    /// Changes the maximum height. Lowering it lets the excess settle down to the new ceiling
+    /// (it melts away over the ends rather than raining down).
+    public func setMaxHeight(_ value: Float) {
+        guard value != maxHeight else { return }
+        let scale = value / maxHeight
+        maxHeight = value
+        for index in ceiling.indices {
+            ceiling[index] *= scale
+            if heights[index] > ceiling[index] {
+                meltedMass += (heights[index] - ceiling[index]) * spacing
+                heights[index] = ceiling[index]
+            }
+        }
+        isSettled = false
     }
 
     /// Removes all snow.
@@ -275,7 +295,7 @@ public final class SnowCap {
         guard highX >= frame.minX, lowX <= frame.maxX else { return 0 }
         let lowY = min(from.y, to.y) - radius
         let highY = max(from.y, to.y) + radius
-        guard highY >= frame.maxY - cornerRadius, lowY <= frame.maxY + Config.capMaxHeight + 2 else { return 0 }
+        guard highY >= frame.maxY - cornerRadius, lowY <= frame.maxY + maxHeight + 2 else { return 0 }
 
         flushIncoming()
         let first = max(0, Int(((lowX - frame.minX) / spacing).rounded(.down)))
@@ -327,7 +347,7 @@ public final class SnowCap {
             let wave = 0.5 + 0.35 * sin(x * 2 * Float.pi / Config.capLumpWavelength + lumpPhase)
                 + 0.15 * sin(x * 2 * Float.pi / (Config.capLumpWavelength * 0.43) + lumpPhase * 1.7)
             let lumpiness = Config.capCeilingLumpiness
-            return Config.capMaxHeight * (lumpiness + (1 - lumpiness) * min(max(wave, 0), 1))
+            return maxHeight * (lumpiness + (1 - lumpiness) * min(max(wave, 0), 1))
         }
     }
 

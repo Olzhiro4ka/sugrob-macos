@@ -12,6 +12,8 @@ struct LaunchOptionsTests {
             "/path/Sugrob", "--hud", "--debug-surfaces", "--instant-snow", "--seed", "123", "--precise-dock",
         ])
         #expect(options.preciseDock)
+        #expect(!options.openSettings)
+        #expect(LaunchOptions(arguments: ["x", "--settings"]).openSettings)
         #expect(options.hud)
         #expect(options.debugSurfaces)
         #expect(options.instantSnow)

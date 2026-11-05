@@ -36,6 +36,15 @@ All notable changes to this project are documented here. The format follows
   frame and the Dock preferences (tile size, pinned apps, folders, recents, running apps),
   refreshed on app launch/quit. It can be brushed off with the cursor and falls off when the
   Dock hides. Optional precise width via Accessibility (`--precise-dock`, opt-in only).
+- Full menu: Snow on/off, Intensity, Snow on Windows, Snow on Dock, Clear All Snow,
+  Settings…, Quit. Settings window (SwiftUI): intensity, max drift height, wind, frame rate
+  (Balanced / Smooth / Efficient), pause on battery, launch at login, precise Dock detection.
+  Everything applies live.
+- Pause on battery power (IOKit power-source notifications).
+- Mission Control / App Exposé: snow pauses and nothing falls off when windows shrink into
+  the overview. Stage Manager thumbnails don't collect snow.
+- `--settings` launch flag; HUD shows settled snow mass and logs pauses with a count of frames
+  presented while paused (always 0).
 
 ### Changed
 - Settled caps skip relaxation until something changes them.
