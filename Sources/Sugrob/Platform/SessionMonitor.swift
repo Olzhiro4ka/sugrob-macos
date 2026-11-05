@@ -9,12 +9,16 @@ enum PauseReason: Hashable {
     case displaysAsleep
     case sessionInactive
     case poweringOff
+    /// Every screen shows a fullscreen app (per-screen hiding handles the partial case).
+    case allFullscreen
 }
 
 /// Watches lock, sleep, screensaver, fast user switching and shutdown via public notifications.
 @MainActor
 final class SessionMonitor {
     var onChange: ((PauseReason, Bool) -> Void)?
+    /// Called when the active Space changes (windows jump; worth an immediate window poll).
+    var onSpaceChange: (() -> Void)?
 
     init() {
         let distributed = DistributedNotificationCenter.default()
@@ -39,6 +43,7 @@ final class SessionMonitor {
             (NSWorkspace.sessionDidResignActiveNotification, #selector(sessionResigned)),
             (NSWorkspace.sessionDidBecomeActiveNotification, #selector(sessionBecameActive)),
             (NSWorkspace.willPowerOffNotification, #selector(willPowerOff)),
+            (NSWorkspace.activeSpaceDidChangeNotification, #selector(spaceChanged)),
         ]
         for (name, selector) in workspaceEvents {
             workspace.addObserver(self, selector: selector, name: name, object: nil)
@@ -56,4 +61,5 @@ final class SessionMonitor {
     @objc private func sessionResigned() { onChange?(.sessionInactive, true) }
     @objc private func sessionBecameActive() { onChange?(.sessionInactive, false) }
     @objc private func willPowerOff() { onChange?(.poweringOff, true) }
+    @objc private func spaceChanged() { onSpaceChange?() }
 }

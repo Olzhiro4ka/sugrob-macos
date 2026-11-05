@@ -15,28 +15,49 @@ final class HUD {
         return label
     }()
 
+    struct Frame {
+        /// Input polling + simulation (s).
+        var tick: Double
+        /// CPU encode time of all overlays (s).
+        var render: Double
+        /// Window-list poll duration if a poll happened this frame (s).
+        var poll: Double?
+        var flakes: Int
+        var windows: Int
+        var caps: Int
+        var segments: Int
+        var fps: Int
+    }
+
     private var windowStart = CACurrentMediaTime()
     private var lastLog = CACurrentMediaTime()
     private var frames = 0
     private var tickSum: Double = 0
     private var tickMax: Double = 0
     private var renderSum: Double = 0
+    private var pollSum: Double = 0
+    private var pollMax: Double = 0
+    private var polls = 0
     private var cpuAtWindowStart = ProcessStats.cpuSeconds()
 
     /// Places the label at the top-left of `view`, just below the menu bar.
     func attach(to view: NSView) {
         label.removeFromSuperview()
         view.addSubview(label)
-        label.frame.origin = CGPoint(x: 12, y: view.bounds.height - 60)
+        label.frame.origin = CGPoint(x: 12, y: view.bounds.height - 76)
         label.autoresizingMask = [.minYMargin, .maxXMargin]
     }
 
-    /// Records one frame. `tick` = input polling + simulation, `render` = CPU encode time (s).
-    func record(tick: Double, render: Double, flakes: Int, fps: Int) {
+    func record(_ frame: Frame) {
         frames += 1
-        tickSum += tick
-        tickMax = max(tickMax, tick)
-        renderSum += render
+        tickSum += frame.tick
+        tickMax = max(tickMax, frame.tick)
+        renderSum += frame.render
+        if let poll = frame.poll {
+            polls += 1
+            pollSum += poll
+            pollMax = max(pollMax, poll)
+        }
 
         let now = CACurrentMediaTime()
         let elapsed = now - windowStart
@@ -44,19 +65,24 @@ final class HUD {
 
         let cpuNow = ProcessStats.cpuSeconds()
         let cpuPercent = (cpuNow - cpuAtWindowStart) / elapsed * 100
-        let text = String(
-            format: "fps %4.1f (cap %d) · flakes %d · tick %.3f ms (max %.3f) · render %.3f ms · cpu %.1f%% · mem %.1f MB",
-            Double(frames) / elapsed, fps, flakes,
+        let line1 = String(
+            format: "fps %4.1f (cap %d) · tick %.3f ms (max %.3f) · poll %.2f ms (max %.2f, %d/s) · render %.3f ms",
+            Double(frames) / elapsed, frame.fps,
             tickSum / Double(frames) * 1000, tickMax * 1000,
-            renderSum / Double(frames) * 1000,
+            polls > 0 ? pollSum / Double(polls) * 1000 : 0, pollMax * 1000, polls,
+            renderSum / Double(frames) * 1000
+        )
+        let line2 = String(
+            format: "flakes %d · windows %d · caps %d · segments %d · cpu %.1f%% · mem %.1f MB",
+            frame.flakes, frame.windows, frame.caps, frame.segments,
             cpuPercent, ProcessStats.footprintMegabytes()
         )
-        label.stringValue = " " + text + " "
+        label.stringValue = " " + line1 + " \n " + line2 + " "
         label.sizeToFit()
 
         if now - lastLog >= 5 {
             lastLog = now
-            FileHandle.standardError.write(Data(("[hud] " + text + "\n").utf8))
+            FileHandle.standardError.write(Data(("[hud] " + line1 + " · " + line2 + "\n").utf8))
         }
 
         windowStart = now
@@ -65,6 +91,9 @@ final class HUD {
         tickSum = 0
         tickMax = 0
         renderSum = 0
+        pollSum = 0
+        pollMax = 0
+        polls = 0
     }
 }
 

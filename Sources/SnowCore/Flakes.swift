@@ -70,6 +70,15 @@ public struct FlakePool {
     }
 
     public mutating func step(dt: Float, wind: Float, rng: inout SplitMix64) {
+        step(dt: dt, wind: wind, rng: &rng) { _, _, _ in false }
+    }
+
+    /// Advances all flakes. `land(previous, current, radius)` is asked about every flake that
+    /// moved; returning true absorbs it (it is recycled like a flake that left the screen).
+    public mutating func step(
+        dt: Float, wind: Float, rng: inout SplitMix64,
+        land: (SIMD2<Float>, SIMD2<Float>, Float) -> Bool
+    ) {
         guard !regions.isEmpty else {
             count = 0
             return
@@ -78,6 +87,7 @@ public struct FlakePool {
         var i = 0
         while i < count {
             var sprite = sprites[i]
+            let previous = SIMD2(sprite.x, sprite.y)
             swayPhase[i] += swayOmega[i] * dt
             let sway = swayAmplitude[i] * swayOmega[i] * cos(swayPhase[i])
             sprite.x += (wind * windFactor[i] + sway) * dt
@@ -90,7 +100,8 @@ public struct FlakePool {
                 sprite.x -= bounds.width + 2 * margin
             }
 
-            if sprite.y < bounds.minY - margin {
+            let landed = land(previous, SIMD2(sprite.x, sprite.y), sprite.z)
+            if landed || sprite.y < bounds.minY - margin {
                 if count > targetCount {
                     remove(at: i)
                     continue // the swapped-in flake at `i` still needs its step

@@ -19,3 +19,10 @@ All notable changes to this project are documented here. The format follows
 - Full pause (no tick, overlays hidden) on screen lock, screensaver, sleep, display sleep,
   fast user switching, shutdown, and when snow is toggled off.
 - `--hud`: fps, flake count, ms per tick, render encode time, process CPU and memory.
+- Snow settles on the top edges of windows: window tracking via `CGWindowListCopyWindowInfo`
+  (no permissions; polled off the main thread at 8 Hz, 30 Hz while dragging), occlusion so
+  covered parts of an edge show no snow, heightmap caps with angle-of-repose relaxation,
+  lumpy ceiling, and droop over rounded corners. Caps move with their window; disappearing
+  windows are debounced so Space switches don't wipe the snow.
+- Fullscreen apps pause the snow on their display only.
+- `--debug-surfaces` (window outlines, top edges, visible intervals) and `--instant-snow`.

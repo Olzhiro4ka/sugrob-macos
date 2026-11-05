@@ -37,6 +37,64 @@ public enum Config {
     /// Fraction of the wind felt by the largest flake; the smallest feels all of it (0…1).
     public static let windLargeFlakeFactor: Float = 0.55
 
+    // MARK: Windows
+
+    /// Window corner radius on macOS 14/15 (pt). Caps droop along this arc at both ends.
+    public static let windowCornerRadiusLegacy: Float = 10
+    /// Window corner radius on macOS 26+ (pt). Tahoe varies it per window (toolbar windows are
+    /// rounder); this is a compromise that only shapes the droop.
+    public static let windowCornerRadiusModern: Float = 16
+    /// Minimum window size to carry snow (pt).
+    public static let minWindowSize: SIMD2<Float> = [80, 40]
+    /// A window must be missing from this many consecutive polls before it counts as gone.
+    /// Space switches and Mission Control hide windows for a few frames.
+    public static let disappearPolls = 3
+    /// Window-list polling interval while idle (s): 8 Hz.
+    public static let pollIntervalIdle: Float = 1.0 / 8
+    /// Window-list polling interval while the mouse is down or windows just changed (s): 30 Hz.
+    public static let pollIntervalActive: Float = 1.0 / 30
+    /// How long after the last window change polling stays fast (s).
+    public static let pollActiveWindow: Float = 0.5
+    /// Positions between polls are extrapolated along the velocity for at most this long (s).
+    public static let maxExtrapolation: Float = 1.0 / 20
+    /// Weight of the newest sample in the exponentially smoothed velocity (0…1).
+    public static let velocitySmoothing: Float = 0.6
+    /// Visible intervals shorter than this are dropped (pt).
+    public static let minVisibleInterval: Float = 2
+
+    // MARK: Snow caps
+
+    /// Horizontal distance between heightmap columns (pt).
+    public static let capColumnSpacing: Float = 2
+    /// Maximum cap height (pt). Each column gets a lumpy ceiling between
+    /// `capMaxHeight * capCeilingLumpiness` and `capMaxHeight`.
+    public static let capMaxHeight: Float = 12
+    /// Lower bound of the per-column ceiling as a fraction of `capMaxHeight`.
+    public static let capCeilingLumpiness: Float = 0.75
+    /// Wavelength of the ceiling lumps (pt).
+    public static let capLumpWavelength: Float = 22
+    /// Snow area one absorbed flake adds to a cap (pt²) at medium intensity.
+    /// Flux ≈ 0.0038 flakes/(pt·s) ⇒ 12 pt² ≈ 0.046 pt/s ⇒ a full cap in ~4 minutes.
+    public static let snowPerFlake: Float = 12
+    /// Half-width of the triangular kernel a flake is spread over (columns).
+    public static let depositRadiusColumns = 2
+    /// Angle of repose as max rise per run (tan θ, θ ≈ 37°).
+    public static let reposeSlope: Float = 0.75
+    /// Relaxation passes per simulation step.
+    public static let relaxPasses = 2
+    /// Fraction of the excess slope moved per pass (0…1); < 1 keeps it stable and soft.
+    public static let relaxRate: Float = 0.5
+    /// Snow height an end column can hold before it spills over the edge (pt).
+    public static let capEdgeHold: Float = 0.4
+    /// Vertical band above a top edge that a front window must touch to hide that cap (pt).
+    public static let occlusionBand: Float = capMaxHeight
+    /// `--instant-snow` fills caps to this fraction of their ceiling.
+    public static let instantSnowFill: Float = 0.9
+    /// Hard bound on simultaneously tracked caps (count).
+    public static let maxCaps = 256
+    /// Hard bound on spill events buffered per step (count).
+    public static let maxSpillsPerStep = 1024
+
     // MARK: Tick
 
     /// Longest simulated step (s); longer gaps (e.g. after a hitch) are clamped to this.

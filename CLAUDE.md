@@ -35,11 +35,18 @@ It is pure ambience. It must never get in the way of real work.
 3. **Click-through, always.** Overlay windows have `ignoresMouseEvents = true`. The app
    must never steal focus, intercept clicks, appear in Cmd-Tab, or show a Dock icon
    (`LSUIElement = YES`).
-4. **Cheap.** Performance budget (Apple Silicon, medium intensity, one 1512×982 display):
-   - CPU of the app process ≤ 3% average while idle-snowing, ≤ 8% during interaction;
+4. **Cheap.** Performance budget (Apple Silicon, medium intensity, one ~1500×960 pt Retina display):
+   - CPU of the app process ≤ 3% average while idle-snowing (target; macOS's own floor for a
+     30 fps full-screen present is ~3%, so if we exceed it the idle rate drops to 20 fps),
+     ≤ 8% during interaction;
    - simulation + window polling ≤ 1.5 ms per tick on the main thread;
-   - RSS ≤ 80 MB; no growth over 1 hour (no leaks, bounded particle pools);
+   - memory (physical footprint, as in Activity Monitor): ≤ 40 MB of our own memory
+     **excluding** GPU memory we cannot avoid (a fixed ~49 MB Metal driver cost plus two
+     drawables per screen, ~22 MB each on a Retina laptop screen). In practice ≤ 140 MB total
+     on one Retina display, ~+45–70 MB per extra display. No growth over 1 hour (no leaks,
+     bounded particle pools);
    - no GPU work at all while paused.
+   (Revised after Phase 1 measurements; see "Known gotchas" → Metal memory / CPU floor.)
 5. **No private APIs** (no `CGS*`/`SLS*` symbols, no `dlsym` tricks). Public frameworks only.
 6. **No third-party dependencies** unless explicitly approved. Swift stdlib, AppKit,
    SwiftUI (settings only), Metal, MetalKit, QuartzCore, ServiceManagement, IOKit (power).
@@ -131,8 +138,9 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - `CGWindowListCopyWindowInfo` bounds use a **top-left origin** in global display space
   (primary display's top-left = 0,0, y grows down).
 - AppKit/`NSScreen` uses a **bottom-left origin** (y grows up).
-- `SnowCore` works in **AppKit global points, y up**. All conversions live in
-  `Platform/CoordinateSpace.swift`, nowhere else. Convert with the **primary** screen
+- `SnowCore` works in **AppKit global points, y up**. All conversions go through
+  `Platform/CoordinateSpace.swift`, nowhere else; the pure math it calls lives in
+  `SnowCore/CoordinateMath.swift` so the multi-monitor cases are unit-tested. Convert with the **primary** screen
   height (`NSScreen.screens[0].frame.maxY`), not `NSScreen.main`.
 - The renderer converts global points to each overlay's local space. Metal drawable is in
   pixels (`backingScaleFactor`).
@@ -141,6 +149,8 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - `CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)`
   returns windows **front to back**. Keep only: `layer == 0`, `alpha > 0.01`,
   `ownerPID != own pid`, width ≥ 80 and height ≥ 40.
+- The call runs on a **background serial queue** (it is an IPC round trip to the WindowServer);
+  results are applied on the main actor between ticks. At most one poll in flight.
 - Identify windows by `kCGWindowNumber`. Each tick produce `TrackedWindow { id, frame, zIndex,
   velocity, sizeDelta, appeared, disappeared }`. Velocity = smoothed position delta / dt.
 - A window's **snow surface** is its top edge, inset by the macOS corner radius
@@ -257,3 +267,9 @@ launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored 
   (`build/Sugrob.app/Contents/MacOS/Sugrob --hud 2>hud.log`) to collect numbers without seeing the screen.
 - Pause can be smoke-tested by posting `com.apple.screensaver.didstart`/`didstop` as
   distributed notifications from a tiny Swift script.
+- `CGWindowListCopyWindowInfo` wall time is ~0.2 ms warm but 1–4 ms when called at 8 Hz
+  (cold caches, IPC wait). That is waiting, not our CPU, which is why polling is off-main.
+- Debug builds are ~10× slower in the simulation (tick ≈ 0.9 ms vs 0.05 ms release). Quote
+  release numbers in reports.
+- Maximized windows have their top edge right under the menu bar; their caps are drawn there
+  but the menu bar (level 24 > overlay 21) covers them. That is expected.
