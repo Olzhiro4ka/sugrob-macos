@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Swift 6 (tools-version 6.0) needs Xcode 16+, which the macos-15 image ships by default.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build (warnings are errors)
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Universal app bundle
+        run: |
+          make app
+          lipo -info build/Sugrob.app/Contents/MacOS/Sugrob
+          codesign --verify --strict --verbose build/Sugrob.app
+
+      - name: Privacy guard
+        # The app must never read window titles or touch the network (see CLAUDE.md).
+        # Comment lines are skipped so the rule itself can be documented in the code.
+        run: |
+          hits="$(grep -rnE 'kCGWindowName|URLSession|NWConnection|CFNetwork|import Network' Sources \
+            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
+          if [ -n "$hits" ]; then echo "$hits"; exit 1; fi

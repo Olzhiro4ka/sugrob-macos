@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # Optional signing secrets. Without them the app ships ad-hoc signed and not notarized.
+      DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+      DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+      DEVELOPER_ID_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: make test
+
+      - name: Import Developer ID certificate
+        if: env.DEVELOPER_ID_P12_BASE64 != '' && env.DEVELOPER_ID_IDENTITY != ''
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "SIGN_IDENTITY=$DEVELOPER_ID_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build universal app
+        run: make app
+
+      - name: Notarize app
+        if: env.SIGN_IDENTITY != '' && env.NOTARY_APPLE_ID != '' && env.NOTARY_TEAM_ID != '' && env.NOTARY_PASSWORD != ''
+        run: |
+          ditto -c -k --keepParent build/Sugrob.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --wait \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD"
+          xcrun stapler staple build/Sugrob.app
+          echo "NOTARIZED=1" >> "$GITHUB_ENV"
+
+      - name: Package zip and dmg
+        run: scripts/make_dmg.sh
+
+      - name: Notarize dmg
+        if: env.NOTARIZED == '1'
+        run: |
+          xcrun notarytool submit "build/Sugrob-$VERSION.dmg" --wait \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD"
+          xcrun stapler staple "build/Sugrob-$VERSION.dmg"
+          (cd build && shasum -a 256 "Sugrob-$VERSION.zip" "Sugrob-$VERSION.dmg" > "Sugrob-$VERSION.sha256")
+
+      - name: Release notes
+        run: |
+          # The CHANGELOG section for this version, or [Unreleased] if it was not cut yet.
+          section() { awk -v h="$1" '/^## \[/ { if (f) exit; if (index($0, "## [" h "]") == 1) { f=1; next } } f' CHANGELOG.md; }
+          section "$VERSION" > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] || section Unreleased > "$RUNNER_TEMP/notes.md"
+          if [ "${NOTARIZED:-0}" != "1" ]; then
+            cat >> "$RUNNER_TEMP/notes.md" <<'NOTE'
+
+          ---
+          **This build is not notarized.** macOS will say it "cannot be opened". After moving
+          Sugrob to Applications, right-click it → **Open** → **Open**, or run:
+          `xattr -dr com.apple.quarantine /Applications/Sugrob.app`
+          NOTE
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Sugrob $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            $([[ "$VERSION" == *-* ]] && echo --prerelease) \
+            "build/Sugrob-$VERSION.dmg" "build/Sugrob-$VERSION.zip" "build/Sugrob-$VERSION.sha256"
