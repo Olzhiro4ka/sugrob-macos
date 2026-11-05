@@ -66,11 +66,22 @@ struct SettingsView: View {
                 Text("Sugrob never uses the network and needs no permissions in its default configuration.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("Version \(Self.version)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
         .frame(width: 440)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "dev"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        return "\(short) (\(build))"
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
