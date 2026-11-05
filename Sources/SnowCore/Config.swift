@@ -55,8 +55,6 @@ public enum Config {
     public static let pollIntervalActive: Float = 1.0 / 30
     /// How long after the last window change polling stays fast (s).
     public static let pollActiveWindow: Float = 0.5
-    /// Positions between polls are extrapolated along the velocity for at most this long (s).
-    public static let maxExtrapolation: Float = 1.0 / 20
     /// Weight of the newest sample in the exponentially smoothed velocity (0…1).
     public static let velocitySmoothing: Float = 0.6
     /// Visible intervals shorter than this are dropped (pt).
@@ -77,14 +75,18 @@ public enum Config {
     /// Flux ≈ 0.0038 flakes/(pt·s) ⇒ 12 pt² ≈ 0.046 pt/s ⇒ a full cap in ~4 minutes.
     public static let snowPerFlake: Float = 12
     /// Half-width of the triangular kernel a flake is spread over (columns).
-    public static let depositRadiusColumns = 2
+    public static let depositRadiusColumns = 4
+    /// Rate at which freshly deposited snow eases into the heightmap (1/s); avoids visible steps.
+    public static let depositEaseRate: Float = 5
     /// Angle of repose as max rise per run (tan θ, θ ≈ 37°).
     public static let reposeSlope: Float = 0.75
     /// Relaxation passes per simulation step.
     public static let relaxPasses = 2
     /// Fraction of the excess slope moved per pass (0…1); < 1 keeps it stable and soft.
     public static let relaxRate: Float = 0.5
-    /// Snow height an end column can hold before it spills over the edge (pt).
+    /// Snow height an end column can hold (pt). The excess slides over the rounded corner and
+    /// melts away silently: a constant drizzle of particles would look busy and keep the frame
+    /// rate at 60 fps.
     public static let capEdgeHold: Float = 0.4
     /// Vertical band above a top edge that a front window must touch to hide that cap (pt).
     public static let occlusionBand: Float = capMaxHeight
@@ -93,7 +95,47 @@ public enum Config {
     /// Hard bound on simultaneously tracked caps (count).
     public static let maxCaps = 256
     /// Hard bound on spill events buffered per step (count).
-    public static let maxSpillsPerStep = 1024
+    public static let maxSpillsPerStep = 4096
+
+    // MARK: Debris (knocked-off snow)
+
+    /// Hard upper bound of simultaneous debris particles (count).
+    public static let debrisCapacity = 4096
+    /// Snow carried by one debris particle (pt²). Spills are split into particles of this mass
+    /// with stochastic rounding, so mass is conserved on average.
+    public static let debrisParticleMass: Float = 4
+    /// Gravity (pt/s²).
+    public static let gravity: Float = 1200
+    /// Linear air drag (1/s).
+    public static let debrisDrag: Float = 0.8
+    /// Maximum life of a particle (s).
+    public static let debrisMaxLife: Float = 6
+    /// Random velocity added to every new particle (pt/s, ± per axis).
+    public static let debrisJitter: SIMD2<Float> = [30, 25]
+    /// Debris radius range (pt).
+    public static let debrisRadius: ClosedRange<Float> = 0.9...2.0
+    /// Debris opacity range.
+    public static let debrisOpacity: ClosedRange<Float> = 0.75...1.0
+
+    // MARK: Interactions
+
+    /// Window displacement per step below which nothing is shed (pt); filters bounds rounding.
+    public static let shedDeadZone: Float = 0.3
+    /// Displacement per step that sheds a whole cap (pt). Snow does not ride along with a
+    /// moving window: any real movement sheds in proportion, a drag sheds everything quickly.
+    public static let shedDistance: Float = 6
+    /// Fraction of the window velocity passed on to shed snow (0…1).
+    public static let shedVelocityInherit: Float = 0.75
+    /// A window must rest this long before it collects snow again (s).
+    public static let settleDelay: Float = 0.3
+    /// Cursor brush radius (pt).
+    public static let brushRadius: Float = 10
+    /// Minimum cursor movement per step for the brush to act (pt).
+    public static let brushMinMove: Float = 0.5
+    /// Fraction of the cursor velocity passed on to brushed snow (0…1).
+    public static let brushVelocityInherit: Float = 0.35
+    /// Upward kick of brushed snow (pt/s).
+    public static let brushKick: Float = 90
 
     // MARK: Tick
 

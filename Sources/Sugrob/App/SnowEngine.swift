@@ -9,6 +9,8 @@ final class SnowEngine: NSObject {
     private let tracker = WindowTracker()
     private let session = SessionMonitor()
     private let hud: HUD?
+    /// `--fps N` override.
+    private let fixedFPS: Int?
 
     private var displayLink: CADisplayLink?
     private var lastTimestamp: CFTimeInterval?
@@ -33,6 +35,8 @@ final class SnowEngine: NSObject {
         screens = ScreenManager(gpu: gpu, world: world)
         screens.debugSurfaces = options.debugSurfaces
         hud = options.hud ? HUD() : nil
+        fixedFPS = options.fps
+        if let fps = options.fps { currentFPS = fps }
         super.init()
 
         screens.onRebuild = { [weak self] in self?.overlaysRebuilt() }
@@ -65,9 +69,13 @@ final class SnowEngine: NSObject {
 
     @objc private func tick(_ link: CADisplayLink) {
         let start = CACurrentMediaTime()
-        let dt = lastTimestamp.map { link.timestamp - $0 } ?? 0
-        lastTimestamp = link.timestamp
+        // Step by the interval between the frames' *presentation* times, so motion matches what
+        // the display actually shows even if a callback runs a little late.
+        let dt = lastTimestamp.map { link.targetTimestamp - $0 } ?? 0
+        lastTimestamp = link.targetTimestamp
         let mouseDown = NSEvent.pressedMouseButtons != 0
+        let mouse = NSEvent.mouseLocation
+        world.setCursor(SIMD2(Float(mouse.x), Float(mouse.y)))
 
         if start >= nextPoll && !pollInFlight {
             requestPoll()
@@ -76,15 +84,16 @@ final class SnowEngine: NSObject {
         }
 
         world.step(dt: Float(dt))
-        updateFrameRate(active: mouseDown || world.windows.anyMoving)
+        updateFrameRate(active: mouseDown || world.isBusy)
 
         let simulated = CACurrentMediaTime()
         screens.render()
         let rendered = CACurrentMediaTime()
 
         hud?.record(HUD.Frame(
+            interval: dt, drops: screens.droppedFrames,
             tick: simulated - start, render: rendered - simulated, poll: completedPollSeconds,
-            flakes: world.flakes.count, windows: world.windows.order.count,
+            flakes: world.flakes.count, debris: world.debris.count, windows: world.windows.order.count,
             caps: world.caps.count, segments: screens.lastCapSegments, fps: currentFPS
         ))
         completedPollSeconds = nil
@@ -157,7 +166,7 @@ final class SnowEngine: NSObject {
     }
 
     private func updateFrameRate(active: Bool) {
-        let fps = active ? Config.activeFPS : Config.idleFPS
+        let fps = fixedFPS ?? (active ? Config.activeFPS : Config.idleFPS)
         if fps != currentFPS { setFrameRate(fps) }
     }
 

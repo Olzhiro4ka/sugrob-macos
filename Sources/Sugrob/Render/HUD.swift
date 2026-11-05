@@ -16,6 +16,10 @@ final class HUD {
     }()
 
     struct Frame {
+        /// Time since the previous tick (s); its max shows hitches.
+        var interval: Double
+        /// Cumulative dropped frames.
+        var drops: Int
         /// Input polling + simulation (s).
         var tick: Double
         /// CPU encode time of all overlays (s).
@@ -23,6 +27,7 @@ final class HUD {
         /// Window-list poll duration if a poll happened this frame (s).
         var poll: Double?
         var flakes: Int
+        var debris: Int
         var windows: Int
         var caps: Int
         var segments: Int
@@ -35,6 +40,9 @@ final class HUD {
     private var tickSum: Double = 0
     private var tickMax: Double = 0
     private var renderSum: Double = 0
+    private var renderMax: Double = 0
+    private var intervalMax: Double = 0
+    private var dropsAtWindowStart = 0
     private var pollSum: Double = 0
     private var pollMax: Double = 0
     private var polls = 0
@@ -53,6 +61,8 @@ final class HUD {
         tickSum += frame.tick
         tickMax = max(tickMax, frame.tick)
         renderSum += frame.render
+        renderMax = max(renderMax, frame.render)
+        intervalMax = max(intervalMax, frame.interval)
         if let poll = frame.poll {
             polls += 1
             pollSum += poll
@@ -66,15 +76,15 @@ final class HUD {
         let cpuNow = ProcessStats.cpuSeconds()
         let cpuPercent = (cpuNow - cpuAtWindowStart) / elapsed * 100
         let line1 = String(
-            format: "fps %4.1f (cap %d) · tick %.3f ms (max %.3f) · poll %.2f ms (max %.2f, %d/s) · render %.3f ms",
-            Double(frames) / elapsed, frame.fps,
+            format: "fps %4.1f (cap %d, worst gap %.1f ms, drops %d) · tick %.3f ms (max %.3f) · poll %.2f ms (max %.2f, %d/s) · render %.3f ms (max %.2f)",
+            Double(frames) / elapsed, frame.fps, intervalMax * 1000, frame.drops - dropsAtWindowStart,
             tickSum / Double(frames) * 1000, tickMax * 1000,
             polls > 0 ? pollSum / Double(polls) * 1000 : 0, pollMax * 1000, polls,
-            renderSum / Double(frames) * 1000
+            renderSum / Double(frames) * 1000, renderMax * 1000
         )
         let line2 = String(
-            format: "flakes %d · windows %d · caps %d · segments %d · cpu %.1f%% · mem %.1f MB",
-            frame.flakes, frame.windows, frame.caps, frame.segments,
+            format: "flakes %d · debris %d · windows %d · caps %d · segments %d · cpu %.1f%% · mem %.1f MB",
+            frame.flakes, frame.debris, frame.windows, frame.caps, frame.segments,
             cpuPercent, ProcessStats.footprintMegabytes()
         )
         label.stringValue = " " + line1 + " \n " + line2 + " "
@@ -91,6 +101,9 @@ final class HUD {
         tickSum = 0
         tickMax = 0
         renderSum = 0
+        renderMax = 0
+        intervalMax = 0
+        dropsAtWindowStart = frame.drops
         pollSum = 0
         pollMax = 0
         polls = 0

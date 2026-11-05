@@ -31,8 +31,13 @@ struct SnowCapTests {
 
     @Test func ceilingLimitsHeight() {
         let cap = makeCap()
-        for _ in 0..<10_000 { cap.deposit(at: 300, amount: 12) }
+        var spills: [SnowSpill] = []
+        for _ in 0..<10_000 {
+            cap.deposit(at: 300, amount: 12)
+            cap.relax(dt: 1.0 / 30, spills: &spills)
+        }
         #expect(cap.heights.max()! <= Config.capMaxHeight + 1e-3)
+        #expect(cap.heights.max()! > Config.capMaxHeight * 0.7)
     }
 
     @Test func relaxationConservesMassAwayFromEdges() {
@@ -40,7 +45,7 @@ struct SnowCapTests {
         for _ in 0..<40 { cap.deposit(at: 300, amount: 12) }
         let before = cap.mass
         var spills: [SnowSpill] = []
-        for _ in 0..<500 { cap.relax(spills: &spills) }
+        for _ in 0..<500 { cap.relax(dt: 1.0 / 30, spills: &spills) }
         #expect(spills.isEmpty)
         #expect(abs(cap.mass - before) < 1e-2)
     }
@@ -49,7 +54,7 @@ struct SnowCapTests {
         let cap = makeCap()
         for _ in 0..<60 { cap.deposit(at: 300, amount: 12) }
         var spills: [SnowSpill] = []
-        for _ in 0..<2000 { cap.relax(spills: &spills) }
+        for _ in 0..<2000 { cap.relax(dt: 1.0 / 30, spills: &spills) }
         let maxRise = Config.reposeSlope * cap.spacing
         for i in 0..<(cap.columnCount - 1) {
             let rise = abs(cap.surfaceY(ofColumn: i) - cap.surfaceY(ofColumn: i + 1))
@@ -65,9 +70,10 @@ struct SnowCapTests {
         cap.fill(fraction: 1)
         let before = cap.mass
         var spills: [SnowSpill] = []
-        for _ in 0..<300 { cap.relax(spills: &spills) }
+        let melted = cap.meltedMass
+        for _ in 0..<300 { cap.relax(dt: 1.0 / 30, spills: &spills) }
         let spilled = spills.reduce(0) { $0 + $1.mass }
-        #expect(abs(cap.mass + spilled - before) < 1e-2)
+        #expect(abs(cap.mass + spilled + (cap.meltedMass - melted) - before) < 1e-2)
     }
 
     @Test func endsDrainOverTheCorner() {
@@ -114,6 +120,87 @@ struct SnowCapTests {
         #expect(spills.allSatisfy { $0.position.x < narrower.minX && $0.velocity.x < 0 })
         let after = Array(cap.heights.suffix(60))
         for (a, b) in zip(after, rightHeights) { #expect(abs(a - b) < 0.05) }
+    }
+
+    @Test func depositEasesIn() {
+        let cap = makeCap()
+        cap.deposit(at: 300, amount: 12)
+        #expect(cap.heights.max()! == 0) // nothing pops in instantly
+        var spills: [SnowSpill] = []
+        cap.relax(dt: 1.0 / 30, spills: &spills)
+        let first = cap.heights.max()!
+        #expect(first > 0)
+        for _ in 0..<60 { cap.relax(dt: 1.0 / 30, spills: &spills) }
+        #expect(cap.heights.max()! > first)
+        #expect(abs(cap.mass - 12) < 1e-2)
+    }
+
+    @Test func endsMeltWithoutDebris() {
+        let cap = makeCap(radius: 14)
+        cap.fill(fraction: 1)
+        var spills: [SnowSpill] = []
+        for _ in 0..<600 {
+            cap.deposit(at: frame.minX + 4, amount: 12)
+            cap.relax(dt: 1.0 / 30, spills: &spills)
+        }
+        #expect(spills.isEmpty)
+        #expect(cap.meltedMass > 0)
+    }
+
+    @Test func partialShedKeepsTheRest() {
+        let cap = makeCap()
+        cap.fill(fraction: 1)
+        let before = cap.mass
+        var spills: [SnowSpill] = []
+        cap.shed(fraction: 0.25, velocity: [100, 0], spills: &spills)
+        let spilled = spills.reduce(0) { $0 + $1.mass }
+        #expect(abs(spilled - before * 0.25) < before * 0.01)
+        #expect(abs(cap.mass - before * 0.75) < before * 0.01)
+        #expect(spills.allSatisfy { $0.velocity == [100, 0] })
+    }
+
+    @Test func brushRemovesOnlyTouchedColumns() {
+        let cap = makeCap()
+        cap.fill(fraction: 1)
+        cap.visible = [Interval(frame.minX, frame.maxX)]
+        var spills: [SnowSpill] = []
+        // Horizontal swipe 4 pt above the edge from x=280 to x=320.
+        let removed = cap.brush(from: [280, frame.maxY + 4], to: [320, frame.maxY + 4], radius: 10,
+                                velocity: [50, 90], spills: &spills)
+        #expect(removed > 0)
+        for i in 0..<cap.columnCount {
+            let x = cap.x(ofColumn: i)
+            if x > 272 && x < 328 { #expect(cap.heights[i] == 0) }
+            // Away from the brush and from the drained corners, snow stays.
+            if (x > 130 && x < 260) || (x > 340 && x < 470) { #expect(cap.heights[i] > 0) }
+        }
+        #expect(abs(spills.reduce(0) { $0 + $1.mass } - removed) < 1e-3)
+    }
+
+    @Test func brushFarAboveDoesNothing() {
+        let cap = makeCap()
+        cap.fill(fraction: 1)
+        cap.visible = [Interval(frame.minX, frame.maxX)]
+        var spills: [SnowSpill] = []
+        let removed = cap.brush(from: [200, frame.maxY + 40], to: [400, frame.maxY + 40], radius: 10,
+                                velocity: .zero, spills: &spills)
+        #expect(removed == 0)
+    }
+
+    @Test func brushIgnoresHiddenPart() {
+        let cap = makeCap()
+        cap.fill(fraction: 1)
+        cap.visible = [Interval(frame.minX, 250)]
+        var spills: [SnowSpill] = []
+        cap.brush(from: [300, frame.maxY + 4], to: [320, frame.maxY + 4], radius: 10, velocity: .zero, spills: &spills)
+        #expect(spills.isEmpty)
+    }
+
+    @Test func rigidDisplacementSeparatesMoveFromResize() {
+        let a = Rect(x: 0, y: 0, width: 100, height: 100)
+        #expect(SnowCap.rigidDisplacement(from: a, to: a.offsetBy([5, -3])) == [5, -3])
+        #expect(SnowCap.rigidDisplacement(from: a, to: Rect(x: 0, y: 0, width: 80, height: 100)) == [0, 0])
+        #expect(SnowCap.rigidDisplacement(from: a, to: Rect(x: 20, y: 0, width: 80, height: 100)) == [0, 0])
     }
 
     @Test func shedAllEmptiesCap() {

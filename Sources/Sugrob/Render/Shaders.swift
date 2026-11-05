@@ -49,6 +49,50 @@ enum Shaders {
         return float4(a, a, a, a);
     }
 
+    // MARK: Debris
+
+    struct DebrisOut {
+        float4 position [[position]];
+        float2 uv;      // x across, y along the velocity (-1 tail … +1 head)
+        float alpha;
+        float aspect;   // half-length / half-width
+    };
+
+    // Instance = 2 × float4: (x, y, radius, alpha), (vx, vy, 0, 0).
+    // The quad is stretched along the velocity into a short motion streak.
+    vertex DebrisOut debrisVertex(uint vid [[vertex_id]],
+                                  uint iid [[instance_id]],
+                                  const device float4 *particles [[buffer(0)]],
+                                  constant Uniforms &u [[buffer(1)]]) {
+        float4 s = particles[iid * 2];
+        float2 v = particles[iid * 2 + 1].xy;
+        float speed = length(v);
+        float2 along = speed > 1.0 ? v / speed : float2(0.0, -1.0);
+        float2 across = float2(-along.y, along.x);
+        float halfWidth = s.z + 0.75;
+        // ~22 ms of travel behind the particle, capped so fast flings stay crisp.
+        float halfLength = halfWidth + min(speed * 0.011, 14.0);
+        float2 corner = float2((vid & 1) ? 1.0 : -1.0, (vid & 2) ? 1.0 : -1.0);
+        float2 p = s.xy + across * corner.x * halfWidth + along * (corner.y * halfLength - (halfLength - halfWidth));
+        DebrisOut out;
+        out.position = toClip(p, u);
+        out.uv = corner;
+        out.alpha = s.w;
+        out.aspect = halfLength / halfWidth;
+        return out;
+    }
+
+    fragment float4 debrisFragment(DebrisOut in [[stage_in]]) {
+        // Capsule: round head and tail, fading toward the tail.
+        float y = in.uv.y * in.aspect;
+        float capY = max(abs(y) - (in.aspect - 1.0), 0.0);
+        float d = length(float2(in.uv.x, capY));
+        float body = 1.0 - smoothstep(0.35, 1.0, d);
+        float tail = mix(0.25, 1.0, saturate((in.uv.y + 1.0) * 0.5));
+        float a = in.alpha * body * tail;
+        return float4(a, a, a, a);
+    }
+
     // MARK: Caps
 
     struct CapOut {

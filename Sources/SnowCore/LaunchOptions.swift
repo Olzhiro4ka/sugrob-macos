@@ -8,6 +8,8 @@ public struct LaunchOptions: Equatable, Sendable {
     public var instantSnow = false
     /// `--seed N`: deterministic RNG seed. `nil` means "pick one at launch".
     public var seed: UInt64?
+    /// `--fps N`: fixed render rate (both idle and active), for comparing smoothness vs. CPU.
+    public var fps: Int?
 
     public init() {}
 
@@ -22,6 +24,8 @@ public struct LaunchOptions: Equatable, Sendable {
             case "--instant-snow": instantSnow = true
             case "--seed":
                 if let value = iterator.next() { seed = UInt64(value) }
+            case "--fps":
+                if let value = iterator.next() { fps = Int(value).map { min(max($0, 10), 120) } }
             default:
                 if argument.hasPrefix("--seed="), let value = UInt64(argument.dropFirst("--seed=".count)) {
                     seed = value

@@ -34,17 +34,15 @@ struct WindowRegistryTests {
         #expect(registry.entries[7]?.isPresent == true)
     }
 
-    @Test func velocityAndExtrapolation() {
+    @Test func velocityTracksMovement() {
         let registry = WindowRegistry()
         registry.ingest([WindowSample(id: 1, frame: frame)], time: 0)
         registry.ingest([WindowSample(id: 1, frame: frame.offsetBy([10, 0]))], time: 0.1)
         let velocity = registry.entries[1]!.velocity
         #expect(abs(velocity.x - 100) < 1e-3)
         #expect(registry.anyMoving)
-
-        // Extrapolation is capped at `maxExtrapolation`.
-        let far = registry.frame(of: 1, at: 5)!
-        #expect(abs(far.minX - (110 + 100 * Config.maxExtrapolation)) < 1e-3)
+        // No extrapolation: the frame is the latest poll.
+        #expect(registry.frame(of: 1) == frame.offsetBy([10, 0]))
 
         registry.ingest([WindowSample(id: 1, frame: frame.offsetBy([10, 0]))], time: 0.2)
         #expect(registry.entries[1]!.velocity == .zero)

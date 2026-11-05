@@ -1,15 +1,18 @@
 import Foundation
 
-/// Snow that left a cap: a position, an amount (pt²) and a velocity. Turned into debris by the world.
+/// Snow that left a cap: a position, an amount (pt²), a velocity and the cap it came from
+/// (0 = none). Turned into debris by the world.
 public struct SnowSpill: Equatable, Sendable {
     public var position: SIMD2<Float>
     public var mass: Float
     public var velocity: SIMD2<Float>
+    public var source: UInt32
 
-    public init(position: SIMD2<Float>, mass: Float, velocity: SIMD2<Float> = .zero) {
+    public init(position: SIMD2<Float>, mass: Float, velocity: SIMD2<Float> = .zero, source: UInt32 = 0) {
         self.position = position
         self.mass = mass
         self.velocity = velocity
+        self.source = source
     }
 }
 
@@ -17,14 +20,16 @@ public struct SnowSpill: Equatable, Sendable {
 ///
 /// Columns are spaced ~`Config.capColumnSpacing` apart across the full window width. Heights are
 /// relative to the window's top edge; near the ends the *base* follows the rounded window corner
-/// down, so snow slides along the arc and drips off. Heights are stored relative to the window,
-/// so the cap moves rigidly with it.
+/// down, so snow slides along the arc and melts off the ends. Fresh snow first lands in `incoming` and
+/// eases into `heights`, so the cap grows smoothly instead of in visible steps.
 public final class SnowCap {
     public let id: UInt32
     public private(set) var frame: Rect
     public private(set) var heights: [Float]
     /// Offset of the surface under each column below the top edge (≤ 0, pt).
     public private(set) var base: [Float]
+    /// Deposited snow not yet eased into `heights` (pt).
+    private var incoming: [Float]
     /// Per-column maximum height (lumpy, pt).
     private var ceiling: [Float]
     public private(set) var spacing: Float
@@ -33,7 +38,11 @@ public final class SnowCap {
     public internal(set) var visible: [Interval] = []
     /// Whether the window is currently in the window list.
     public internal(set) var isPresent = true
+    /// Simulation time the window last moved (s).
+    public internal(set) var lastMoveTime: Float = -.infinity
     private let lumpPhase: Float
+    /// Snow that slid over the ends and melted since creation (pt²); for mass bookkeeping.
+    public private(set) var meltedMass: Float = 0
 
     public init(id: UInt32, frame: Rect, cornerRadius: Float, lumpPhase: Float = 0) {
         self.id = id
@@ -42,6 +51,7 @@ public final class SnowCap {
         self.lumpPhase = lumpPhase
         heights = []
         base = []
+        incoming = []
         ceiling = []
         spacing = Config.capColumnSpacing
         rebuildColumns(width: frame.width)
@@ -50,9 +60,9 @@ public final class SnowCap {
     public var columnCount: Int { heights.count }
     public var edgeY: Float { frame.maxY }
 
-    /// Total settled snow (pt²).
+    /// Total snow on the cap, including snow still easing in (pt²).
     public var mass: Float {
-        heights.reduce(0, +) * spacing
+        (heights.reduce(0, +) + incoming.reduce(0, +)) * spacing
     }
 
     public func x(ofColumn index: Int) -> Float {
@@ -83,18 +93,15 @@ public final class SnowCap {
     public func deposit(at x: Float, amount: Float) -> Float {
         let center = Int(((x - frame.minX) / spacing).rounded())
         let radius = Config.depositRadiusColumns
-        var weightSum: Float = 0
-        for offset in -radius...radius {
-            weightSum += Float(radius + 1 - abs(offset))
-        }
+        let weightSum = Float((radius + 1) * (radius + 1))
         var added: Float = 0
         for offset in -radius...radius {
             let index = center + offset
             guard index >= 0, index < columnCount else { continue }
             let share = amount * Float(radius + 1 - abs(offset)) / weightSum / spacing
-            let room = max(0, ceiling[index] - heights[index])
+            let room = max(0, ceiling[index] - heights[index] - incoming[index])
             let delta = min(share, room)
-            heights[index] += delta
+            incoming[index] += delta
             added += delta * spacing
         }
         return added
@@ -106,21 +113,32 @@ public final class SnowCap {
             heights[index] = max(heights[index], ceiling[index] * fraction)
         }
         var discard: [SnowSpill] = []
-        for _ in 0..<200 { relax(spills: &discard) }
+        for _ in 0..<200 { relax(dt: 1.0 / 30, spills: &discard) }
     }
 
     /// Removes all snow.
     public func clear() {
-        for index in heights.indices { heights[index] = 0 }
+        for index in heights.indices {
+            heights[index] = 0
+            incoming[index] = 0
+        }
     }
 
     // MARK: Relaxation
 
-    /// One relaxation step: wherever the surface is steeper than the angle of repose, move snow
-    /// downhill. Snow above `Config.capEdgeHold` on an end column spills over the edge.
-    public func relax(spills: inout [SnowSpill]) {
+    /// Eases fresh snow in, then relaxes: wherever the surface is steeper than the angle of
+    /// repose, snow moves downhill. Snow above `Config.capEdgeHold` on an end column slides over
+    /// the corner and melts (`meltedMass`).
+    public func relax(dt: Float, spills: inout [SnowSpill]) {
         let count = columnCount
         guard count >= 2 else { return }
+        let ease = min(1, Config.depositEaseRate * dt)
+        for index in 0..<count where incoming[index] > 0 {
+            let moved = incoming[index] < 1e-4 ? incoming[index] : incoming[index] * ease
+            incoming[index] -= moved
+            heights[index] += moved
+        }
+
         let maxRise = Config.reposeSlope * spacing
         let rate = Config.relaxRate
         for _ in 0..<Config.relaxPasses {
@@ -141,32 +159,30 @@ public final class SnowCap {
                 }
             }
         }
-        spillEnd(column: 0, direction: -1, spills: &spills)
-        spillEnd(column: count - 1, direction: 1, spills: &spills)
+        meltedMass += drain(column: 0) + drain(column: count - 1)
     }
 
-    private func spillEnd(column: Int, direction: Float, spills: inout [SnowSpill]) {
+    private func drain(column: Int) -> Float {
         let excess = heights[column] - Config.capEdgeHold
-        guard excess > 0 else { return }
+        guard excess > 0 else { return 0 }
         let moved = excess * Config.relaxRate
         heights[column] -= moved
-        appendSpill(&spills, SnowSpill(
-            position: SIMD2(x(ofColumn: column) + direction * spacing * 0.5, surfaceY(ofColumn: column)),
-            mass: moved * spacing,
-            velocity: SIMD2(direction * 8, 0)
-        ))
+        return moved * spacing
     }
 
-    // MARK: Moving and resizing
+    // MARK: Interactions
 
-    /// Follows the window to `newFrame`. A pure move just shifts the cap. On a width change the
-    /// columns are re-anchored to the edge that did not move; snow on columns that no longer
-    /// exist is reported as spills (with a small outward kick).
-    public func update(frame newFrame: Rect, spills: inout [SnowSpill]) {
+    /// Follows the window to `newFrame`. On a width change the columns are re-anchored to the
+    /// edge that did not move; snow on columns that no longer exist is reported as spills with a
+    /// small outward kick. Returns the rigid displacement (the part of the change that is a move).
+    @discardableResult
+    public func update(frame newFrame: Rect, spills: inout [SnowSpill]) -> SIMD2<Float> {
         let old = frame
         frame = newFrame
-        guard abs(newFrame.width - old.width) > 0.5 else { return }
+        let displacement = Self.rigidDisplacement(from: old, to: newFrame)
+        guard abs(newFrame.width - old.width) > 0.5 else { return displacement }
 
+        flushIncoming()
         let oldHeights = heights
         let oldSpacing = spacing
         let oldCount = oldHeights.count
@@ -187,7 +203,7 @@ public final class SnowCap {
         // No clamping to the new ceiling: its lumps shift on resize, and the ceiling only limits
         // new deposits. Heights stay physically where they were.
 
-        guard newFrame.width < old.width else { return }
+        guard newFrame.width < old.width else { return displacement }
         // Old columns beyond the new extent fall off.
         let kick: Float = anchoredLeft ? 25 : -25
         for oldIndex in 0..<oldCount {
@@ -201,29 +217,82 @@ public final class SnowCap {
             appendSpill(&spills, SnowSpill(
                 position: SIMD2(xOld, newFrame.maxY + oldHeights[oldIndex] * 0.5),
                 mass: oldHeights[oldIndex] * oldSpacing,
-                velocity: SIMD2(kick, 15)
+                velocity: SIMD2(kick, 15), source: id
+            ))
+        }
+        return displacement
+    }
+
+    /// Sheds `fraction` (0…1) of the snow on every column, inheriting `velocity`.
+    public func shed(fraction: Float, velocity: SIMD2<Float>, spills: inout [SnowSpill]) {
+        guard fraction > 0 else { return }
+        flushIncoming()
+        let fraction = min(fraction, 1)
+        for index in heights.indices where heights[index] > 0 {
+            let removed = heights[index] * fraction
+            heights[index] -= removed
+            appendSpill(&spills, SnowSpill(
+                position: SIMD2(x(ofColumn: index), surfaceY(ofColumn: index) + removed * 0.5),
+                mass: removed * spacing, velocity: velocity, source: id
             ))
         }
     }
 
     /// Converts the whole cap into spills (window closed, minimized, moved to another Space).
     public func shedAll(velocity: SIMD2<Float>, spills: inout [SnowSpill]) {
-        for index in heights.indices where heights[index] > 0 {
-            appendSpill(&spills, SnowSpill(
-                position: SIMD2(x(ofColumn: index), surfaceY(ofColumn: index) - heights[index] * 0.5),
-                mass: heights[index] * spacing,
-                velocity: velocity
-            ))
+        shed(fraction: 1, velocity: velocity, spills: &spills)
+    }
+
+    /// Knocks off snow touched by a cursor that moved from `from` to `to` (brush of `radius`).
+    /// Only the parts of the cap inside `visible` are touched. Returns the mass removed.
+    @discardableResult
+    public func brush(from: SIMD2<Float>, to: SIMD2<Float>, radius: Float,
+                      velocity: SIMD2<Float>, spills: inout [SnowSpill]) -> Float {
+        let lowX = min(from.x, to.x) - radius
+        let highX = max(from.x, to.x) + radius
+        guard highX >= frame.minX, lowX <= frame.maxX else { return 0 }
+        let lowY = min(from.y, to.y) - radius
+        let highY = max(from.y, to.y) + radius
+        guard highY >= frame.maxY - cornerRadius, lowY <= frame.maxY + Config.capMaxHeight + 2 else { return 0 }
+
+        flushIncoming()
+        let first = max(0, Int(((lowX - frame.minX) / spacing).rounded(.down)))
+        let last = min(columnCount - 1, Int(((highX - frame.minX) / spacing).rounded(.up)))
+        guard first <= last else { return 0 }
+        var removedMass: Float = 0
+        for index in first...last where heights[index] > 0.01 {
+            let x = x(ofColumn: index)
+            guard Intervals.contains(visible, x) else { continue }
+            let bottom = frame.maxY + base[index]
+            let top = bottom + heights[index]
+            // The column is a vertical segment; it is hit if the cursor path comes within radius.
+            let distance = Self.distance(segmentA: from, segmentB: to, columnX: x, bottom: bottom, top: top)
+            guard distance <= radius else { continue }
+            let removed = heights[index]
             heights[index] = 0
+            removedMass += removed * spacing
+            appendSpill(&spills, SnowSpill(
+                position: SIMD2(x, bottom + removed * 0.5),
+                mass: removed * spacing, velocity: velocity, source: id
+            ))
         }
+        return removedMass
     }
 
     // MARK: Private
+
+    private func flushIncoming() {
+        for index in heights.indices where incoming[index] > 0 {
+            heights[index] += incoming[index]
+            incoming[index] = 0
+        }
+    }
 
     private func rebuildColumns(width: Float) {
         let count = max(2, Int((width / Config.capColumnSpacing).rounded()) + 1)
         spacing = width / Float(count - 1)
         heights = Array(repeating: 0, count: count)
+        incoming = Array(repeating: 0, count: count)
         base = (0..<count).map { index in
             let x = Float(index) * spacing
             let fromEdge = min(x, width - x)
@@ -238,11 +307,48 @@ public final class SnowCap {
         }
     }
 
+    /// The move part of a frame change: both vertical edges shifting the same way. A resize from
+    /// one side (one edge fixed) is not a move.
+    static func rigidDisplacement(from old: Rect, to new: Rect) -> SIMD2<Float> {
+        let left = new.minX - old.minX
+        let right = new.maxX - old.maxX
+        let dx: Float = left * right > 0 ? (abs(left) < abs(right) ? left : right) : 0
+        let top = new.maxY - old.maxY
+        let bottom = new.minY - old.minY
+        let dy: Float = top * bottom > 0 ? (abs(top) < abs(bottom) ? top : bottom) : 0
+        return SIMD2(dx, dy)
+    }
+
     /// How far a rounded corner of `radius` sits below the top edge at `fromEdge` pt from the side.
     static func cornerDrop(fromEdge: Float, radius: Float) -> Float {
         guard radius > 0, fromEdge < radius else { return 0 }
         let dx = radius - max(fromEdge, 0)
         return -(radius - (radius * radius - dx * dx).squareRoot())
+    }
+
+    /// Distance between segment AB and the vertical segment x = columnX, y ∈ [bottom, top].
+    static func distance(segmentA a: SIMD2<Float>, segmentB b: SIMD2<Float>,
+                         columnX: Float, bottom: Float, top: Float) -> Float {
+        // Sample the column at bottom, middle and top, plus the closest point of AB to the column
+        // line; exact enough for a 10 pt brush over ≤ 14 pt columns.
+        func pointToSegment(_ p: SIMD2<Float>) -> Float {
+            let ab = b - a
+            let lengthSquared = (ab * ab).sum()
+            let t = lengthSquared > 0 ? min(max(((p - a) * ab).sum() / lengthSquared, 0), 1) : 0
+            let closest = a + ab * t
+            let d = p - closest
+            return (d * d).sum().squareRoot()
+        }
+        var best = min(pointToSegment(SIMD2(columnX, bottom)),
+                       pointToSegment(SIMD2(columnX, (bottom + top) * 0.5)),
+                       pointToSegment(SIMD2(columnX, top)))
+        // Where AB crosses x = columnX, the distance is the vertical gap to the column span.
+        if (a.x - columnX) * (b.x - columnX) <= 0, a.x != b.x {
+            let t = (columnX - a.x) / (b.x - a.x)
+            let y = a.y + (b.y - a.y) * t
+            best = min(best, y < bottom ? bottom - y : (y > top ? y - top : 0))
+        }
+        return best
     }
 
     private static func sample(_ values: [Float], at position: Float) -> Float {

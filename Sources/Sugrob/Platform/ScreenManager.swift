@@ -59,6 +59,8 @@ final class ScreenManager {
         }
     }
 
+    var droppedFrames: Int { overlays.reduce(0) { $0 + $1.renderer.droppedFrames } }
+
     /// Sum of cap segments drawn last frame, for the HUD.
     var lastCapSegments: Int { overlays.reduce(0) { $0 + $1.renderer.lastCapSegments } }
 

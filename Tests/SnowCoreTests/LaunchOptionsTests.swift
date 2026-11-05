@@ -17,6 +17,12 @@ struct LaunchOptionsTests {
         #expect(options.seed == 123)
     }
 
+    @Test func parsesAndClampsFPS() {
+        #expect(LaunchOptions(arguments: ["x", "--fps", "60"]).fps == 60)
+        #expect(LaunchOptions(arguments: ["x", "--fps", "500"]).fps == 120)
+        #expect(LaunchOptions(arguments: ["x", "--fps", "abc"]).fps == nil)
+    }
+
     @Test func parsesSeedWithEquals() {
         #expect(LaunchOptions(arguments: ["x", "--seed=77"]).seed == 77)
     }

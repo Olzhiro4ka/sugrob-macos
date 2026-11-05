@@ -9,8 +9,12 @@ public struct WindowSample: Equatable, Sendable {
     }
 }
 
-/// Turns discrete window-list polls into smooth per-window state: velocity, extrapolated
-/// positions between polls, z-order, and debounced disappearance.
+/// Turns discrete window-list polls into per-window state: velocity, z-order, and debounced
+/// disappearance.
+///
+/// Positions are *not* extrapolated between polls: snow no longer rides along with a moving
+/// window (it sheds), and extrapolation invented movement that never happened, which then shed
+/// snow off windows that had barely moved.
 public final class WindowRegistry {
     public struct Entry: Sendable {
         public let id: UInt32
@@ -103,12 +107,9 @@ public final class WindowRegistry {
         return changes
     }
 
-    /// Frame of `id` at `time`, extrapolated along its velocity for at most
-    /// `Config.maxExtrapolation` past the latest poll.
-    public func frame(of id: UInt32, at time: Float) -> Rect? {
-        guard let entry = entries[id] else { return nil }
-        let ahead = min(max(time - entry.sampleTime, 0), Config.maxExtrapolation)
-        return entry.frame.offsetBy(entry.velocity * ahead)
+    /// Latest polled frame of `id`.
+    public func frame(of id: UInt32) -> Rect? {
+        entries[id]?.frame
     }
 
     /// True while any present window has a non-zero velocity.

@@ -14,6 +14,7 @@ final class SnowGPU {
     let queue: MTLCommandQueue
     let flakePipeline: MTLRenderPipelineState
     let capPipeline: MTLRenderPipelineState
+    let debrisPipeline: MTLRenderPipelineState
     let rectPipeline: MTLRenderPipelineState
 
     init?() {
@@ -40,6 +41,7 @@ final class SnowGPU {
             }
             flakePipeline = try pipeline("flakeVertex", "flakeFragment")
             capPipeline = try pipeline("capVertex", "capFragment")
+            debrisPipeline = try pipeline("debrisVertex", "debrisFragment")
             rectPipeline = try pipeline("rectVertex", "rectFragment")
         } catch {
             NSLog("Sugrob: failed to build Metal pipeline: \(error)")
@@ -62,6 +64,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
     private struct Slot {
         let flakes: MTLBuffer
         let caps: MTLBuffer
+        let debris: MTLBuffer
         let debug: MTLBuffer
     }
 
@@ -80,6 +83,8 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
     /// CPU time spent encoding the last frame (s), for the HUD.
     private(set) var lastEncodeSeconds: Double = 0
     private(set) var lastCapSegments = 0
+    /// Frames skipped because every ring buffer was still in flight (count, for the HUD).
+    private(set) var droppedFrames = 0
 
     init?(gpu: SnowGPU, world: World, screen: NSScreen) {
         self.gpu = gpu
@@ -91,9 +96,10 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         for _ in 0..<Self.ringSize {
             guard let flakes = gpu.device.makeBuffer(length: vectorSize * Config.flakeCapacity, options: .storageModeShared),
                   let caps = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxCapSegments, options: .storageModeShared),
+                  let debris = gpu.device.makeBuffer(length: vectorSize * 2 * Config.debrisCapacity, options: .storageModeShared),
                   let debug = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxDebugRects, options: .storageModeShared)
             else { return nil }
-            slots.append(Slot(flakes: flakes, caps: caps, debug: debug))
+            slots.append(Slot(flakes: flakes, caps: caps, debris: debris, debug: debug))
         }
         self.slots = slots
         super.init()
@@ -106,14 +112,18 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         defer { lastEncodeSeconds = CACurrentMediaTime() - start }
 
         // Never block the main thread on the GPU: drop the frame if all buffers are in flight.
-        guard inFlight.wait(timeout: .now()) == .success else { return }
+        guard inFlight.wait(timeout: .now()) == .success else {
+            droppedFrames += 1
+            return
+        }
 
         let slot = slots[ringIndex]
         let flakeCount = writeFlakes(into: slot.flakes)
         let capCount = writeCapSegments(into: slot.caps)
+        let debrisCount = writeDebris(into: slot.debris)
         let debugCount = debugSurfaces ? writeDebugRects(into: slot.debug) : 0
         lastCapSegments = capCount
-        let hasContent = flakeCount + capCount + debugCount > 0
+        let hasContent = flakeCount + capCount + debrisCount + debugCount > 0
         if !hasContent && !lastFrameHadContent {
             inFlight.signal()
             return
@@ -144,6 +154,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         }
         draw(gpu.capPipeline, slot.caps, capCount)
         draw(gpu.flakePipeline, slot.flakes, flakeCount)
+        draw(gpu.debrisPipeline, slot.debris, debrisCount)
         draw(gpu.rectPipeline, slot.debug, debugCount)
 
         encoder.endEncoding()
@@ -173,6 +184,28 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
                 // Generous radius covers the soft halo drawn around the core.
                 if screenRect.intersects(circleAt: SIMD2(sprite.x, sprite.y), radius: sprite.z * 2 + 1) {
                     destination[written] = sprite
+                    written += 1
+                }
+            }
+        }
+        return written
+    }
+
+    /// Copies debris particles that touch this overlay's screen as (sprite, velocity) pairs.
+    private func writeDebris(into buffer: MTLBuffer) -> Int {
+        let debris = world.debris
+        guard debris.count > 0 else { return 0 }
+        let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: Config.debrisCapacity * 2)
+        var written = 0
+        debris.sprites.withUnsafeBufferPointer { sprites in
+            debris.velocities.withUnsafeBufferPointer { velocities in
+                for i in 0..<debris.count {
+                    let sprite = sprites[i]
+                    // Streaks reach up to ~16 pt behind the particle.
+                    guard screenRect.intersects(circleAt: SIMD2(sprite.x, sprite.y), radius: 20) else { continue }
+                    let velocity = velocities[i]
+                    destination[written * 2] = sprite
+                    destination[written * 2 + 1] = SIMD4(velocity.x, velocity.y, 0, 0)
                     written += 1
                 }
             }
