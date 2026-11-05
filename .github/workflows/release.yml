@@ -79,7 +79,8 @@ jobs:
 
           ---
           **This build is not notarized.** macOS will say it "cannot be opened". After moving
-          Sugrob to Applications, right-click it → **Open** → **Open**, or run:
+          Sugrob to Applications, right-click it → **Open** → **Open** (on macOS 15+: System
+          Settings → Privacy & Security → **Open Anyway**), or run:
           `xattr -dr com.apple.quarantine /Applications/Sugrob.app`
           NOTE
           fi
