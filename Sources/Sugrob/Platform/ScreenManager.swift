@@ -65,7 +65,22 @@ final class ScreenManager {
     /// Sum of cap segments drawn last frame, for the HUD.
     var lastCapSegments: Int { overlays.reduce(0) { $0 + $1.renderer.lastCapSegments } }
 
+    private struct ScreenLayout: Equatable {
+        let frame: CGRect
+        let scale: CGFloat
+    }
+
+    /// Frames and scales of the screens the overlays were built for.
+    private var layoutSignature: [ScreenLayout] = []
+
+    private static func currentSignature() -> [ScreenLayout] {
+        NSScreen.screens.map { ScreenLayout(frame: $0.frame, scale: $0.backingScaleFactor) }
+    }
+
     @objc private func screensChanged() {
+        // Also posted when only a `visibleFrame` changes (Dock resized, menu bar hidden);
+        // rebuilding then would needlessly reshuffle every flake.
+        guard Self.currentSignature() != layoutSignature else { return }
         rebuild()
     }
 
@@ -89,6 +104,7 @@ final class ScreenManager {
             overlay.window.close()
         }
         fullscreenHidden = []
+        layoutSignature = Self.currentSignature()
         overlays = NSScreen.screens.compactMap { screen in
             let window = OverlayWindow(screen: screen, device: gpu.device)
             guard let renderer = SnowRenderer(gpu: gpu, world: world, screen: screen) else { return nil }

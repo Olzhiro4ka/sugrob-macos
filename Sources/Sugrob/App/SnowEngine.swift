@@ -7,6 +7,7 @@ final class SnowEngine: NSObject {
     private let world: World
     private let screens: ScreenManager
     private let tracker = WindowTracker()
+    private let systemProcesses = SystemProcesses()
     private let session = SessionMonitor()
     private let dock: DockLocator
     private let power = PowerMonitor()
@@ -146,7 +147,7 @@ final class SnowEngine: NSObject {
     private func requestPoll() {
         guard !pollInFlight else { return }
         pollInFlight = true
-        tracker.poll(primaryHeight: CoordinateSpace.primaryHeight) { [weak self] result in
+        tracker.poll(primaryHeight: CoordinateSpace.primaryHeight, system: systemProcesses.snapshot) { [weak self] result in
             guard let self else { return }
             pollInFlight = false
             completedPollSeconds = result.duration

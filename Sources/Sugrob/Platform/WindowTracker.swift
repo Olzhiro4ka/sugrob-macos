@@ -22,18 +22,12 @@ final class WindowTracker: Sendable {
         var duration: Double
     }
 
-    /// System processes whose layer-0 windows are not real windows (Stage Manager thumbnails,
-    /// Dock overlays).
-    private static let systemBundleIDs = ["com.apple.dock", "com.apple.WindowManager"]
-
     /// Polls off the main thread; `completion` runs on the main actor.
-    func poll(primaryHeight: Float, completion: @escaping @MainActor @Sendable (Result) -> Void) {
+    func poll(primaryHeight: Float, system: SystemProcesses.Snapshot,
+              completion: @escaping @MainActor @Sendable (Result) -> Void) {
         let ownPID = ownPID
-        let dockPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
-            .map(\.processIdentifier))
-        let systemPIDs = Set(Self.systemBundleIDs.flatMap {
-            NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier)
-        })
+        let dockPIDs = system.dock
+        let systemPIDs = system.all
         queue.async {
             let start = CACurrentMediaTime()
             var result = Self.read(primaryHeight: primaryHeight, ownPID: ownPID,
@@ -75,5 +69,40 @@ final class WindowTracker: Sendable {
             samples.append(WindowSample(id: number, frame: CoordinateSpace.core(fromCG: bounds, primaryHeight: primaryHeight)))
         }
         return Result(samples: samples, missionControl: missionControl, duration: 0)
+    }
+}
+
+/// PIDs of system processes whose layer-0 windows are not real windows (Stage Manager
+/// thumbnails, Dock overlays). Looking them up is a synchronous LaunchServices XPC call, so
+/// they are cached and refreshed only when apps launch or quit (the Dock relaunches rarely).
+@MainActor
+final class SystemProcesses {
+    struct Snapshot: Sendable {
+        var dock: Set<pid_t> = []
+        var all: Set<pid_t> = []
+    }
+
+    private static let dockBundleID = "com.apple.dock"
+    private static let bundleIDs = [dockBundleID, "com.apple.WindowManager"]
+
+    private(set) var snapshot = Snapshot()
+
+    init() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(self, selector: #selector(refresh),
+                           name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        center.addObserver(self, selector: #selector(refresh),
+                           name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        refresh()
+    }
+
+    @objc private func refresh() {
+        var snapshot = Snapshot()
+        for bundleID in Self.bundleIDs {
+            let pids = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier)
+            snapshot.all.formUnion(pids)
+            if bundleID == Self.dockBundleID { snapshot.dock.formUnion(pids) }
+        }
+        self.snapshot = snapshot
     }
 }

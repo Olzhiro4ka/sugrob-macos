@@ -314,3 +314,11 @@ The Settings window is torn down on close so SwiftUI's memory (~15 MB) is return
 - While overlays are ordered out (paused), macOS releases their drawables: footprint drops
   from ~120 MB to ~70 MB.
 - `--hud` logs `[pause] …` / `[resume] frames presented while paused: N`; N must be 0.
+- `NSRunningApplication.runningApplications(withBundleIdentifier:)` and even
+  `.processIdentifier` are **synchronous LaunchServices XPC calls** (~0.1–0.5 ms each). Never
+  call them per tick or per poll; `SystemProcesses` caches the PIDs and refreshes on app
+  launch/quit. (Calling them per poll raised the tick from 0.08 to 0.6 ms, max 2.5 ms.)
+- `didChangeScreenParametersNotification` also fires when only a `visibleFrame` changes (Dock
+  resized, menu bar auto-hidden). `ScreenManager` rebuilds overlays only when screen frames or
+  scale factors actually changed.
+- Profile with `sample <pid> 5 -file out.txt` (no permission needed for our own process).

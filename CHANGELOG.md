@@ -48,5 +48,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 - Settled caps skip relaxation until something changes them.
+- Overlays are rebuilt only when screen frames or scale factors change, not when just the
+  Dock or menu bar changes the visible frame (flakes no longer reshuffle).
+- System process IDs (Dock, Stage Manager) are cached instead of looked up on every poll.
 - Fresh snow eases into caps instead of appearing in steps; overflow at cap ends melts
   instead of dripping. Window positions are no longer extrapolated between polls.
