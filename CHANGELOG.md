@@ -26,3 +26,13 @@ All notable changes to this project are documented here. The format follows
   windows are debounced so Space switches don't wipe the snow.
 - Fullscreen apps pause the snow on their display only.
 - `--debug-surfaces` (window outlines, top edges, visible intervals) and `--instant-snow`.
+- Knocked-off snow: debris particles under gravity with motion streaks, landing on windows
+  below (snow transfers from window to window).
+- Interactions: narrowing a window drops the snow from the removed part; moving a window
+  sheds its snow with the window's momentum (snow no longer rides along); the cursor brushes
+  snow off caps; closed/minimized windows drop their snow.
+- `--fps N` launch flag; HUD shows frame-pacing (worst gap, drops) and debris count.
+
+### Changed
+- Fresh snow eases into caps instead of appearing in steps; overflow at cap ends melts
+  instead of dripping. Window positions are no longer extrapolated between polls.

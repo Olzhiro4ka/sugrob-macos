@@ -11,7 +11,8 @@ makes it snow on the desktop. Flakes fall over everything, settle on the **top e
 windows** and on the **top of the Dock**, and the settled snow has physics:
 
 - resize a window → snow beyond the new width falls off;
-- fling (drag fast / jerk) a window → snow flies off with the window's momentum;
+- move a window → snow does not ride along: it falls off, carrying the window's momentum
+  (a fast jerk flings it);
 - brush the snow with the cursor → it breaks into particles and falls;
 - push snow off the Dock with the cursor;
 - snow knocked off one window can land on another window below it and pile up there.
@@ -109,7 +110,8 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - `--debug-surfaces` draws detected surfaces, dock frame and occlusion clipping;
 - `--hud` shows fps, flake/debris counts, ms per tick, window-poll ms;
 - `--instant-snow` pre-fills all caps (for demos and screenshots);
-- `--seed N` makes the RNG deterministic.
+- `--seed N` makes the RNG deterministic;
+- `--fps N` fixes the render rate (idle and active) to compare smoothness against CPU.
 
 ## Architecture
 
@@ -126,9 +128,12 @@ Debug flags (launch args, also via `make run ARGS="..."`):
   `MTKView` `preferredFramesPerSecond`) drives: poll inputs → `World.step` → render.
 - **Adaptive rates:**
   - render at 60 fps while something is moving fast (debris present, mouse button down,
-    a window moving); otherwise 30 fps;
+    a window moving); otherwise 30 fps (60 fps idle measured at ~6% CPU, 30 fps at ~3%);
   - window-list polling at 30 Hz while the mouse button is down or a window changed in the
-    last 0.5 s; otherwise 8 Hz. Positions between polls are interpolated.
+    last 0.5 s; otherwise 8 Hz. Positions are **not** interpolated or extrapolated between
+    polls: snow doesn't ride along with windows, and extrapolation invented movement that
+    shed snow off windows that had barely moved.
+  - simulate with `targetTimestamp` deltas (presentation time), not callback time.
 - **Pause completely** (stop display link, zero GPU) when: the screen is locked or asleep,
   the screensaver is running, the frontmost app is fullscreen on that display, the user
   toggles off, or "Pause on battery" is enabled and we are on battery (IOKit power source).
@@ -177,19 +182,25 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - **SnowCap:** heightmap, one column per 2 pt of surface width, `Float` heights,
   `maxHeight` ≈ 10–14 pt (config). Each step:
   - relaxation, so neighbor slope never exceeds the angle of repose and excess moves sideways;
-  - spill: mass pushed past a segment end becomes debris;
-  - the cap moves rigidly with its window; slow drags keep the snow.
+  - fresh snow lands in an `incoming` buffer and eases in (~0.2 s), so caps grow smoothly;
+  - snow past a cap end slides over the rounded corner and **melts silently** (a constant
+    drizzle of particles looked busy and kept the frame rate at 60 fps);
+  - the cap is anchored to its window, but a moving window sheds its snow (see Interactions).
 - **Debris:** knocked-off snow. Fixed pool, gravity ~1200 pt/s², light drag, short life.
-  Debris that lands on another visible surface is absorbed there, which is how snow
-  transfers from window to window. Rendered as small particles stretched along velocity
+  Debris that lands on another visible, resting surface is absorbed there, which is how snow
+  transfers from window to window; it never lands on the cap it came from. Rendered as small particles stretched along velocity
   (motion streaks).
 - **Interactions** (`Interactions.swift`):
   - *Resize:* columns that fall outside the new width turn into debris with a small outward
     kick. Heights are preserved for columns that remain (re-anchored by left edge or right
     edge depending on which side moved).
-  - *Fling:* when window acceleration or speed exceeds a threshold, shed a fraction of
-    the snow proportional to the excess, inheriting window velocity plus jitter. A hard
-    stop after a fast move also sheds (inertia).
+  - *Move (incl. fling):* snow never rides along. Each step, the rigid part of the window's
+    displacement (both edges moving the same way, so a one-sided resize is not a move) sheds
+    `(d - shedDeadZone) / shedDistance` of the cap (dead zone 0.3 pt, full at 6 pt), inheriting
+    75% of the window velocity plus jitter. A drag empties the cap within a frame or two; a
+    fast jerk flings the snow. A window collects no snow until it has rested `settleDelay`.
+    (Decided by the user after Phase 2: "snow should fall off, not move with the window".
+    This replaces the earlier "slow drags keep the snow" rule.)
   - *Brush:* cursor segment between the previous and current positions, radius ~10 pt. Columns
     under it are converted to debris with cursor velocity plus upward kick. Works with or
     without the mouse button down. Same for the Dock surface.
