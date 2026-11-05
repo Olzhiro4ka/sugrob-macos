@@ -6,6 +6,8 @@ final class StatusItemController: NSObject {
     private let settings: SettingsStore
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let toggleItem = NSMenuItem(title: "Snow", action: #selector(toggleSnow), keyEquivalent: "")
+    /// Called with the new enabled state after the user toggles snow.
+    var onToggle: ((Bool) -> Void)?
 
     init(settings: SettingsStore) {
         self.settings = settings
@@ -31,6 +33,7 @@ final class StatusItemController: NSObject {
     @objc private func toggleSnow() {
         settings.isSnowEnabled.toggle()
         refresh()
+        onToggle?(settings.isSnowEnabled)
     }
 
     private func refresh() {

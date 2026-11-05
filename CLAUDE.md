@@ -125,6 +125,7 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - **Pause completely** (stop display link, zero GPU) when: the screen is locked or asleep,
   the screensaver is running, the frontmost app is fullscreen on that display, the user
   toggles off, or "Pause on battery" is enabled and we are on battery (IOKit power source).
+  Fullscreen pauses **only that display's overlay**; other displays keep snowing.
 
 ### Coordinate spaces (classic bug source)
 - `CGWindowListCopyWindowInfo` bounds use a **top-left origin** in global display space
@@ -218,6 +219,8 @@ launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored 
 1. `make build` and `make test` pass with zero warnings.
 2. New simulation logic has unit tests in `SnowCoreTests` (deterministic seed).
 3. Performance-sensitive changes: run `make run ARGS="--hud"` and note the ms/tick in the PR/commit body.
+   Phase reports also include WindowServer's CPU delta (with vs. without Sugrob), because the
+   compositing cost of a full-screen transparent overlay lands there, not in our process.
 4. Anything visual: describe exactly what the user should check manually, because you
    cannot see the screen. Ask the user to confirm before moving on to the next phase.
 5. Update this file if architecture/gotchas changed; update CHANGELOG.md.
@@ -240,3 +243,17 @@ launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored 
   `import Testing` (`@Test`, `#expect`). `make build`/`make test` pass `-warnings-as-errors`.
 - With CLT, `swift build --arch arm64 --arch x86_64` (multi-arch) needs Xcode's build system.
   `scripts/bundle.sh release --universal` builds each arch separately and merges with `lipo`.
+- Swift 6: a closure created inside `@MainActor` code inherits main-actor isolation. Metal
+  completion handlers run on a Metal queue → runtime trap (`dispatch_assert_queue`). Mark them
+  `@Sendable` and touch only Sendable state (e.g. a `DispatchSemaphore`).
+- Metal memory (M4, macOS 26): the first command buffer that renders to a drawable adds a fixed
+  ~49 MB of driver-owned "unmapped (graphics)" footprint, independent of drawable size. Each
+  full-screen Retina drawable is ~22 MB (1470×956 pt @2x × 4 B); we cap `maximumDrawableCount`
+  at 2. Measure with `footprint -p <pid>`.
+- CPU floor: a bare 30 fps clear+present of a full-screen `CAMetalLayer` already costs ~3% of
+  the process on M4/macOS 26. On a 60 Hz panel the display link only honours divisors of 60
+  (asking for 24 fps yields 30).
+- `--hud` also writes a line to stderr every 5 s; run the binary directly
+  (`build/Sugrob.app/Contents/MacOS/Sugrob --hud 2>hud.log`) to collect numbers without seeing the screen.
+- Pause can be smoke-tested by posting `com.apple.screensaver.didstart`/`didstop` as
+  distributed notifications from a tiny Swift script.
