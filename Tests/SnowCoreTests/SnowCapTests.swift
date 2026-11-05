@@ -135,6 +135,21 @@ struct SnowCapTests {
         #expect(abs(cap.mass - 12) < 1e-2)
     }
 
+    @Test func capsSettleAndWakeOnChange() {
+        let cap = makeCap()
+        cap.fill(fraction: 0.5)
+        var spills: [SnowSpill] = []
+        for _ in 0..<600 { cap.relax(dt: 1.0 / 30, spills: &spills) }
+        #expect(cap.isSettled)
+        let heights = cap.heights
+        cap.relax(dt: 1.0 / 30, spills: &spills)
+        #expect(cap.heights == heights)
+        cap.deposit(at: 300, amount: 12)
+        #expect(!cap.isSettled)
+        cap.relax(dt: 1.0 / 30, spills: &spills)
+        #expect(cap.heights != heights)
+    }
+
     @Test func endsMeltWithoutDebris() {
         let cap = makeCap(radius: 14)
         cap.fill(fraction: 1)

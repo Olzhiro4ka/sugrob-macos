@@ -171,7 +171,16 @@ Debug flags (launch args, also via `make run ARGS="..."`):
   `persistent-apps`, `persistent-others`, `show-recents`, `orientation`, `autohide`) via
   `UserDefaults(suiteName:)`, plus the count of running regular apps, which gives the pill
   width. Recompute on app launch/terminate notifications and on screen-parameter changes.
-- Opt-in precise mode: AX query of the Dock's list element frame.
+  Pure math in `SnowCore/DockLayout.swift`; constants in `Config` calibrated against AX on
+  macOS 26 (68 pt slot per tile at tilesize 64, separator 0.478 × tilesize, 7.7 pt end
+  padding, height tilesize + 20, Dock top 3 pt below `visibleFrame.minY`, centred on screen).
+  Also refreshed every 5 s to catch preference changes that post no notification.
+- Opt-in precise mode (`--precise-dock` until the Settings window exists): AX query of the
+  Dock's list element. Only its **x and width** are used; on macOS 26 AX reports the Dock's y
+  at the very bottom of the screen (off-screen), so y always comes from `visibleFrame`.
+- The Dock is a cap with id `World.dockCapID`, frontmost: it hides window caps behind it and
+  is drawn in front of them. `--debug-surfaces` outlines it in yellow; `--hud` /
+  `--debug-surfaces` log each new estimate to stderr as `[dock] …`.
 - v1 supports the **bottom** Dock only. Left/right or autohide → no Dock surface; existing
   Dock snow falls off as debris when the Dock hides.
 
@@ -182,6 +191,7 @@ Debug flags (launch args, also via `make run ARGS="..."`):
 - **SnowCap:** heightmap, one column per 2 pt of surface width, `Float` heights,
   `maxHeight` ≈ 10–14 pt (config). Each step:
   - relaxation, so neighbor slope never exceeds the angle of repose and excess moves sideways;
+    a cap whose relaxation moved nothing is *settled* and skipped until its heights change;
   - fresh snow lands in an `incoming` buffer and eases in (~0.2 s), so caps grow smoothly;
   - snow past a cap end slides over the rounded corner and **melts silently** (a constant
     drizzle of particles looked busy and kept the frame rate at 60 fps);
@@ -284,3 +294,7 @@ launch at login (`SMAppService.mainApp`), opt-in precise Dock detection. Stored 
   release numbers in reports.
 - Maximized windows have their top edge right under the menu bar; their caps are drawn there
   but the menu bar (level 24 > overlay 21) covers them. That is expected.
+- The Dock process's windows in `CGWindowList` (layer 20 and two negative layers) all cover
+  the whole screen, so they cannot be used to find the Dock pill.
+- Ad-hoc signed builds get a new code signature on every rebuild, so an Accessibility grant
+  for `--precise-dock` may have to be re-approved after rebuilding.

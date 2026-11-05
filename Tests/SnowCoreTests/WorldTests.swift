@@ -166,6 +166,56 @@ struct WorldTests {
         #expect(cap.mass <= afterBrush + 1e-3)
     }
 
+    @Test func dockCollectsSnowAndHidesCapsBehindIt() {
+        let world = makeWorld()
+        let dock = Rect(x: 200, y: 3, width: 1066, height: 84)
+        world.setDock(dock)
+        // A window whose top edge sits inside the Dock's band is hidden by the Dock.
+        world.ingestWindows([WindowSample(id: 1, frame: Rect(x: 0, y: 0, width: 1512, height: 60))])
+        run(world, seconds: 60)
+        let dockCap = world.caps.first { $0.id == World.dockCapID }!
+        #expect(dockCap.mass > 0)
+        #expect(world.caps.last?.id == World.dockCapID) // rendered in front
+        let window = world.caps.first { $0.id == 1 }!
+        #expect(!Intervals.contains(window.visible, 700))
+        #expect(Intervals.contains(window.visible, 100))
+    }
+
+    @Test func dockSnowCanBeBrushedOff() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        world.step(dt: 1.0 / 30)
+        let cap = world.caps.first { $0.id == World.dockCapID }!
+        let mass = cap.mass
+        for i in 0...30 {
+            world.setCursor([500 + Float(i) * 10, Float(87 + 4)])
+            world.step(dt: 1.0 / 60)
+        }
+        #expect(cap.mass < mass * 0.8)
+    }
+
+    @Test func hidingTheDockDropsItsSnow() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        world.step(dt: 1.0 / 30)
+        world.setDock(nil)
+        #expect(!world.caps.contains { $0.id == World.dockCapID })
+        world.step(dt: 1.0 / 30)
+        #expect(world.debris.count > 0)
+    }
+
+    @Test func dockToggleOffDropsSnow() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        world.snowOnDock = false
+        #expect(world.dockFrame == nil)
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        #expect(world.dockFrame == nil)
+    }
+
     @Test func debrisIsBoundedAndDies() {
         var rng = SplitMix64(seed: 1)
         var pool = DebrisPool(capacity: 100)

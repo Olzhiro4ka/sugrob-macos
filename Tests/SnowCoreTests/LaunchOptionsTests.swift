@@ -9,8 +9,9 @@ struct LaunchOptionsTests {
 
     @Test func parsesAllFlags() {
         let options = LaunchOptions(arguments: [
-            "/path/Sugrob", "--hud", "--debug-surfaces", "--instant-snow", "--seed", "123",
+            "/path/Sugrob", "--hud", "--debug-surfaces", "--instant-snow", "--seed", "123", "--precise-dock",
         ])
+        #expect(options.preciseDock)
         #expect(options.hud)
         #expect(options.debugSurfaces)
         #expect(options.instantSnow)

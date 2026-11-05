@@ -32,7 +32,12 @@ All notable changes to this project are documented here. The format follows
   sheds its snow with the window's momentum (snow no longer rides along); the cursor brushes
   snow off caps; closed/minimized windows drop their snow.
 - `--fps N` launch flag; HUD shows frame-pacing (worst gap, drops) and debris count.
+- Snow on the Dock: its frame is estimated without permissions from the screen's visible
+  frame and the Dock preferences (tile size, pinned apps, folders, recents, running apps),
+  refreshed on app launch/quit. It can be brushed off with the cursor and falls off when the
+  Dock hides. Optional precise width via Accessibility (`--precise-dock`, opt-in only).
 
 ### Changed
+- Settled caps skip relaxation until something changes them.
 - Fresh snow eases into caps instead of appearing in steps; overflow at cap ends melts
   instead of dripping. Window positions are no longer extrapolated between polls.

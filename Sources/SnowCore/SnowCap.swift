@@ -43,6 +43,10 @@ public final class SnowCap {
     private let lumpPhase: Float
     /// Snow that slid over the ends and melted since creation (pt²); for mass bookkeeping.
     public private(set) var meltedMass: Float = 0
+    /// False once relaxation found nothing to move; any change to the heights clears it.
+    /// Settled caps skip relaxation entirely (most caps, most of the time).
+    public private(set) var isSettled = false
+    private var pendingIncoming = false
 
     public init(id: UInt32, frame: Rect, cornerRadius: Float, lumpPhase: Float = 0) {
         self.id = id
@@ -104,6 +108,10 @@ public final class SnowCap {
             incoming[index] += delta
             added += delta * spacing
         }
+        if added > 0 {
+            isSettled = false
+            pendingIncoming = true
+        }
         return added
     }
 
@@ -112,6 +120,7 @@ public final class SnowCap {
         for index in heights.indices {
             heights[index] = max(heights[index], ceiling[index] * fraction)
         }
+        isSettled = false
         var discard: [SnowSpill] = []
         for _ in 0..<200 { relax(dt: 1.0 / 30, spills: &discard) }
     }
@@ -122,6 +131,7 @@ public final class SnowCap {
             heights[index] = 0
             incoming[index] = 0
         }
+        pendingIncoming = false
     }
 
     // MARK: Relaxation
@@ -131,13 +141,19 @@ public final class SnowCap {
     /// the corner and melts (`meltedMass`).
     public func relax(dt: Float, spills: inout [SnowSpill]) {
         let count = columnCount
-        guard count >= 2 else { return }
-        let ease = min(1, Config.depositEaseRate * dt)
-        for index in 0..<count where incoming[index] > 0 {
-            let moved = incoming[index] < 1e-4 ? incoming[index] : incoming[index] * ease
-            incoming[index] -= moved
-            heights[index] += moved
+        guard count >= 2, !isSettled else { return }
+        if pendingIncoming {
+            let ease = min(1, Config.depositEaseRate * dt)
+            var remaining = false
+            for index in 0..<count where incoming[index] > 0 {
+                let moved = incoming[index] < 1e-4 ? incoming[index] : incoming[index] * ease
+                incoming[index] -= moved
+                heights[index] += moved
+                if incoming[index] > 0 { remaining = true }
+            }
+            pendingIncoming = remaining
         }
+        var movedAny = false
 
         let maxRise = Config.reposeSlope * spacing
         let rate = Config.relaxRate
@@ -148,18 +164,24 @@ public final class SnowCap {
                 let difference = left - right
                 let excess = abs(difference) - maxRise
                 guard excess > 0 else { continue }
+                let moved: Float
                 if difference > 0 {
-                    let moved = min(excess * 0.5 * rate, heights[index])
+                    moved = min(excess * 0.5 * rate, heights[index])
                     heights[index] -= moved
                     heights[index + 1] += moved
                 } else {
-                    let moved = min(excess * 0.5 * rate, heights[index + 1])
+                    moved = min(excess * 0.5 * rate, heights[index + 1])
                     heights[index + 1] -= moved
                     heights[index] += moved
                 }
+                // Sub-micron transfers are invisible (e.g. bare corner arcs steeper than repose);
+                // ignoring them lets caps settle.
+                if moved > 1e-4 { movedAny = true }
             }
         }
-        meltedMass += drain(column: 0) + drain(column: count - 1)
+        let melted = drain(column: 0) + drain(column: count - 1)
+        meltedMass += melted
+        if !movedAny && !pendingIncoming && melted < 1e-4 { isSettled = true }
     }
 
     private func drain(column: Int) -> Float {
@@ -286,6 +308,8 @@ public final class SnowCap {
             heights[index] += incoming[index]
             incoming[index] = 0
         }
+        pendingIncoming = false
+        isSettled = false
     }
 
     private func rebuildColumns(width: Float) {

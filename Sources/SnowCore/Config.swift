@@ -97,6 +97,24 @@ public enum Config {
     /// Hard bound on spill events buffered per step (count).
     public static let maxSpillsPerStep = 4096
 
+    // MARK: Dock (estimated without permissions; calibrated against AX on macOS 26)
+
+    /// Extra width per Dock tile beyond `tilesize` (pt). AX: 68 pt slots at tilesize 64.
+    public static let dockTileExtra: Float = 4
+    /// Separator width as a fraction of `tilesize`. AX: 30.6 pt at tilesize 64.
+    public static let dockSeparatorFactor: Float = 0.478
+    /// Padding at each end of the Dock (pt). AX: 7.7 pt.
+    public static let dockEndPadding: Float = 7.7
+    /// Dock height beyond `tilesize` (pt). AX: 84 pt at tilesize 64.
+    public static let dockHeightExtra: Float = 20
+    /// Gap between the Dock's top and the bottom of `visibleFrame` (pt). The 90 pt inset at
+    /// tilesize 64 leaves 6 pt around an 84 pt Dock; assumed split evenly.
+    public static let dockTopGap: Float = 3
+    /// Corner radius of the Dock's rounded ends (pt); snow droops off them like off windows.
+    public static let dockCornerRadius: Float = 18
+    /// How often the Dock estimate is refreshed besides app launch/quit notifications (s).
+    public static let dockRefreshInterval: Double = 5
+
     // MARK: Debris (knocked-off snow)
 
     /// Hard upper bound of simultaneous debris particles (count).

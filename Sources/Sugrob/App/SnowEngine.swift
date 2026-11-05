@@ -8,6 +8,7 @@ final class SnowEngine: NSObject {
     private let screens: ScreenManager
     private let tracker = WindowTracker()
     private let session = SessionMonitor()
+    private let dock: DockLocator
     private let hud: HUD?
     /// `--fps N` override.
     private let fixedFPS: Int?
@@ -35,6 +36,7 @@ final class SnowEngine: NSObject {
         screens = ScreenManager(gpu: gpu, world: world)
         screens.debugSurfaces = options.debugSurfaces
         hud = options.hud ? HUD() : nil
+        dock = DockLocator(verbose: options.hud || options.debugSurfaces)
         fixedFPS = options.fps
         if let fps = options.fps { currentFPS = fps }
         super.init()
@@ -42,6 +44,9 @@ final class SnowEngine: NSObject {
         screens.onRebuild = { [weak self] in self?.overlaysRebuilt() }
         session.onChange = { [weak self] reason, active in self?.setPaused(reason, active) }
         session.onSpaceChange = { [weak self] in self?.nextPoll = 0 }
+        dock.onChange = { [weak self] frame in self?.world.setDock(frame) }
+        dock.preciseMode = options.preciseDock
+        dock.refresh()
         overlaysRebuilt()
     }
 
@@ -63,6 +68,7 @@ final class SnowEngine: NSObject {
         displayLink?.invalidate()
         displayLink = nil
         fullscreenWatch?.invalidate()
+        dock.stop()
     }
 
     // MARK: Tick

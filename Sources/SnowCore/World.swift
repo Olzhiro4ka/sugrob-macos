@@ -1,5 +1,8 @@
 /// Owns the whole simulation. The app feeds it inputs and reads render data back.
 public final class World {
+    /// Cap id reserved for the Dock (window numbers never reach it).
+    public static let dockCapID = UInt32.max
+
     public private(set) var flakes = FlakePool()
     public private(set) var debris = DebrisPool()
     public let windows = WindowRegistry()
@@ -20,6 +23,13 @@ public final class World {
     public var instantSnow = false
     /// Whether flakes settle on windows.
     public var snowOnWindows = true
+    /// Whether the Dock carries snow. Turning it off drops the Dock's snow.
+    public var snowOnDock = true {
+        didSet { if !snowOnDock { setDock(nil) } }
+    }
+    /// The Dock's current frame (AppKit global points), nil when it has no surface.
+    public private(set) var dockFrame: Rect?
+    private var dockCap: SnowCap?
 
     private var rng: SplitMix64
     private var screens: [Rect] = []
@@ -57,6 +67,25 @@ public final class World {
         for entry in changes.disappeared {
             guard let cap = capsByID.removeValue(forKey: entry.id) else { continue }
             cap.shedAll(velocity: .zero, spills: &spills)
+        }
+        rebuildCapOrder()
+    }
+
+    /// Updates the Dock frame. nil (Dock hidden, on the side, or disabled) drops its snow.
+    public func setDock(_ frame: Rect?) {
+        let frame = snowOnDock ? frame : nil
+        guard frame != dockFrame else { return }
+        dockFrame = frame
+        if let frame {
+            if dockCap == nil {
+                let cap = SnowCap(id: Self.dockCapID, frame: frame, cornerRadius: Config.dockCornerRadius,
+                                  lumpPhase: rng.nextUnit() * 2 * Float.pi)
+                if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
+                dockCap = cap
+            }
+        } else if let cap = dockCap {
+            cap.shedAll(velocity: .zero, spills: &spills)
+            dockCap = nil
         }
         rebuildCapOrder()
     }
@@ -110,25 +139,36 @@ public final class World {
     // MARK: Private
 
     private func rebuildCapOrder() {
-        // `order` is front to back; render back to front.
+        // `order` is front to back; render back to front. The Dock is in front of all windows.
         caps = windows.order.reversed().compactMap { capsByID[$0] }
+        if let dockCap { caps.append(dockCap) }
     }
 
     /// Moves caps with their windows, re-anchors on resize, sheds snow off moving windows and
     /// recomputes occlusion.
     private func updateCapGeometry() {
-        // Front-to-back frames for occlusion.
+        // Front-to-back frames for occlusion; the Dock (when present) is frontmost.
         let ids = windows.order
+        let dockOffset = dockFrame == nil ? 0 : 1
         var frames: [Rect] = []
         var present: [Bool] = []
-        frames.reserveCapacity(ids.count)
-        present.reserveCapacity(ids.count)
+        frames.reserveCapacity(ids.count + dockOffset)
+        present.reserveCapacity(ids.count + dockOffset)
+        if let dockFrame {
+            frames.append(dockFrame)
+            present.append(true)
+        }
         for id in ids {
             frames.append(windows.frame(of: id) ?? Rect(x: 0, y: 0, width: 0, height: 0))
             present.append(windows.entries[id]?.isPresent ?? false)
         }
         let visible = Occlusion.visibleIntervals(frames: frames, present: present)
-        for (index, id) in ids.enumerated() {
+        if let dockCap, let dockFrame {
+            dockCap.update(frame: dockFrame, spills: &spills)
+            dockCap.visible = visible[0]
+        }
+        for (position, id) in ids.enumerated() {
+            let index = position + dockOffset
             guard let cap = capsByID[id] else { continue }
             let displacement = cap.update(frame: frames[index], spills: &spills)
             cap.isPresent = present[index]

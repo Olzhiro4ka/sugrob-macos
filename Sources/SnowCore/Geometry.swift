@@ -15,6 +15,7 @@ public struct Rect: Equatable, Sendable {
     public var maxX: Float { minX + width }
     public var maxY: Float { minY + height }
     public var area: Float { width * height }
+    public var midX: Float { minX + width / 2 }
     public var origin: SIMD2<Float> { SIMD2(minX, minY) }
 
     public func contains(_ point: SIMD2<Float>) -> Bool {

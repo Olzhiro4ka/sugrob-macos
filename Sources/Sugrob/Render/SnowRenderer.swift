@@ -260,7 +260,8 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         return written
     }
 
-    /// `--debug-surfaces`: window outlines (blue), whole top edges (red), visible intervals (green).
+    /// `--debug-surfaces`: window outlines (blue), the Dock estimate (yellow), whole top edges
+    /// (red), visible intervals (green).
     private func writeDebugRects(into buffer: MTLBuffer) -> Int {
         let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: Self.maxDebugRects * 2)
         var written = 0
@@ -273,11 +274,13 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         let blue = SIMD4<Float>(0.3, 0.6, 1, 0.8)
         let red = SIMD4<Float>(1, 0.25, 0.25, 0.9)
         let green = SIMD4<Float>(0.2, 1, 0.4, 0.95)
+        let yellow = SIMD4<Float>(1, 0.85, 0.1, 0.95)
         for cap in world.caps where cap.isPresent {
             let f = cap.frame
-            add(SIMD4(f.minX, f.minY, f.width, 1), blue)
-            add(SIMD4(f.minX, f.minY, 1, f.height), blue)
-            add(SIMD4(f.maxX - 1, f.minY, 1, f.height), blue)
+            let outline = cap.id == World.dockCapID ? yellow : blue
+            add(SIMD4(f.minX, f.minY, f.width, 1), outline)
+            add(SIMD4(f.minX, f.minY, 1, f.height), outline)
+            add(SIMD4(f.maxX - 1, f.minY, 1, f.height), outline)
             add(SIMD4(f.minX, f.maxY - 1, f.width, 1), red)
             for interval in cap.visible {
                 add(SIMD4(interval.lower, f.maxY - 3, interval.length, 2), green)
