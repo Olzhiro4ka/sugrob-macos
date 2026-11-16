@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Fullscreen caps are hidden immediately and suppressed before movement shedding;
+  screen-covering geometry also blocks accumulation without platform classification.
 - Restoring precise Dock detection at startup no longer requests Accessibility permission.
   Only explicitly enabling it in Settings can prompt, and only without existing trust.
   Without access, Dock detection silently uses its permission-free estimate.

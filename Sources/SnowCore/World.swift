@@ -167,7 +167,12 @@ public final class World {
     /// Fullscreen windows cannot collect or retain a cap while they cover a display.
     public func setFullscreenWindows(_ ids: Set<UInt32>) {
         fullscreenWindowIDs = ids
-        for id in ids { capsByID[id]?.clear() }
+        for id in ids {
+            guard let cap = capsByID[id] else { continue }
+            cap.clear()
+            cap.isPresent = false
+            cap.visible = []
+        }
         for (index, screen) in screens.enumerated() {
             let covered = ids.contains { id in
                 guard let frame = windows.frame(of: id) else { return false }
@@ -271,6 +276,17 @@ public final class World {
         for (position, id) in ids.enumerated() {
             let index = position + dockOffset
             guard let cap = capsByID[id] else { continue }
+            // Suppress fullscreen geometry before movement can shed a snow cap.
+            // Also protect callers that have not yet supplied platform classification.
+            let fullscreen = fullscreenWindowIDs.contains(id) ||
+                screens.contains { FullscreenCoverage.covers(frames[index], screen: $0) }
+            if fullscreen {
+                cap.clear()
+                cap.restore(frame: frames[index])
+                cap.isPresent = false
+                cap.visible = []
+                continue
+            }
             let displacement = SnowCap.rigidDisplacement(from: cap.frame, to: frames[index])
             let distance = (displacement * displacement).sum().squareRoot()
             if !cap.isPresent {

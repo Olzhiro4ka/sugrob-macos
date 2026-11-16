@@ -416,6 +416,27 @@ struct WorldTests {
         #expect(world.debris.count == 0)
     }
 
+    @Test func fullscreenGeometryCannotCollectWithoutPlatformClassification() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: screen)])
+        run(world, seconds: 2)
+        #expect(world.caps[0].mass == 0)
+        #expect(!world.caps[0].isPresent)
+        #expect(world.debris.count == 0)
+    }
+
+    @Test func fullscreenClassificationImmediatelyHidesCap() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.step(dt: 1 / 30)
+        world.setFullscreenWindows([1])
+        #expect(world.caps[0].mass == 0)
+        #expect(!world.caps[0].isPresent)
+        #expect(world.caps[0].visible.isEmpty)
+    }
+
     @Test func fullscreenWindowLosesItsSnow() {
         let world = makeWorld()
         world.instantSnow = true
