@@ -537,6 +537,52 @@ struct WorldTests {
         #expect(abs(pool.totalMass - total) < total * 0.1)
     }
 
+    @Test func spaceTransitionRebasesSnowWithoutMovementDebris() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.step(dt: 1 / 30)
+        let mass = world.caps[0].mass
+        world.beginWindowTransition()
+        #expect(world.caps[0].visible.isEmpty)
+        world.ingestWindows([WindowSample(id: 1, frame: window.offsetBy([300, 0]))])
+        world.step(dt: 1 / 30)
+        #expect(world.debris.count == 0)
+        #expect(world.caps[0].mass >= mass * 0.98)
+        // Normal dragging after recovery still sheds snow.
+        world.ingestWindows([WindowSample(id: 1, frame: window.offsetBy([320, 0]))])
+        world.step(dt: 1 / 30)
+        #expect(world.debris.count > 0)
+    }
+
+    @Test func enteringFullscreenAfterSpaceTransitionClearsCap() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.step(dt: 1 / 30)
+        world.beginWindowTransition()
+        world.ingestWindows([WindowSample(id: 1, frame: screen)])
+        world.setFullscreenWindows([1])
+        world.step(dt: 1 / 30)
+        #expect(world.caps[0].mass == 0)
+        #expect(world.caps[0].visible.isEmpty)
+        #expect(world.debris.count == 0)
+    }
+
+    @Test func returningBetweenFramesDoesNotShedSnow() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.step(dt: 1 / 30)
+        let mass = world.caps[0].mass
+        // Two background polls can complete before the next display-link callback.
+        world.ingestWindows([])
+        world.ingestWindows([WindowSample(id: 1, frame: window.offsetBy([200, 0]))])
+        world.step(dt: 1 / 30)
+        #expect(world.debris.count == 0)
+        #expect(world.caps[0].mass >= mass * 0.98)
+    }
+
     @Test func briefDisappearanceKeepsSnow() {
         let world = makeWorld()
         world.instantSnow = true

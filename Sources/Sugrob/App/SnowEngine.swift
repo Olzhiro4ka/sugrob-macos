@@ -21,6 +21,7 @@ final class SnowEngine: NSObject {
     private var lastTimestamp: CFTimeInterval?
     private var nextPoll: CFTimeInterval = 0
     private var pollInFlight = false
+    private var spaceGeneration: UInt64 = 0
     private var wasMouseDown = false
     /// Duration of a poll that completed since the last HUD frame (s).
     private var completedPollSeconds: Double?
@@ -54,6 +55,9 @@ final class SnowEngine: NSObject {
         session.onChange = { [weak self] reason, active in self?.setPaused(reason, active) }
         session.onSpaceChange = { [weak self] in
             guard let self else { return }
+            self.spaceGeneration &+= 1
+            self.world.beginWindowTransition()
+            self.setPaused(.missionControl, true)
             self.missionControlRecoverySamples = nil
             self.missionControlRecoveryStart = nil
             self.updateWatch()
@@ -172,9 +176,14 @@ final class SnowEngine: NSObject {
     private func requestPoll() {
         guard !pollInFlight else { return }
         pollInFlight = true
+        let generation = spaceGeneration
         tracker.poll(primaryHeight: CoordinateSpace.primaryHeight, system: systemProcesses.snapshot) { [weak self] result in
             guard let self else { return }
             pollInFlight = false
+            guard generation == spaceGeneration else {
+                requestPoll()
+                return
+            }
             completedPollSeconds = result.duration
             handleMissionControl(result)
             // Ignore window geometry while paused: during Mission Control frames are scaled
@@ -191,7 +200,10 @@ final class SnowEngine: NSObject {
             missionControlRecoverySamples = nil
             missionControlRecoveryStart = nil
             if wasRecovering { updateWatch() }
-            if !pauseReasons.contains(.missionControl) { setPaused(.missionControl, true) }
+            if !pauseReasons.contains(.missionControl) {
+                world.beginWindowTransition()
+                setPaused(.missionControl, true)
+            }
         } else if pauseReasons.contains(.missionControl) {
             let now = CACurrentMediaTime()
             if let previous = missionControlRecoverySamples {

@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Space changes pause window updates until geometry settles, discard polls from the previous
+  Space, and rebase snow without shedding. Missing windows are hidden on every poll, even
+  when multiple polls complete between rendered frames.
 - Fullscreen caps are hidden immediately and suppressed before movement shedding;
   screen-covering geometry also blocks accumulation without platform classification.
 - Restoring precise Dock detection at startup no longer requests Accessibility permission.

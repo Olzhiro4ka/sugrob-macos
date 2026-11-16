@@ -137,7 +137,24 @@ public final class World {
             cap.visible = []
             dormantCaps[entry.id] = (cap, time + Config.hiddenWindowSnowLifetime)
         }
+        // Presence must be recorded per poll, even if no simulation step runs between polls.
+        for id in windows.order where windows.entries[id]?.isPresent == false {
+            capsByID[id]?.isPresent = false
+            capsByID[id]?.visible = []
+        }
         rebuildCapOrder()
+    }
+
+    /// Rebase the next stable window snapshot after a Space / Mission Control transition.
+    /// Animation coordinates are not physical window movement.
+    public func beginWindowTransition() {
+        for cap in capsByID.values {
+            cap.isPresent = false
+            cap.visible = []
+        }
+        debris.removeAll()
+        spills.removeAll(keepingCapacity: true)
+        previousCursor = nil
     }
 
     /// Updates the Dock frame. A hidden or disabled Dock loses its snow immediately.
