@@ -5,10 +5,10 @@ cask "sugrob" do
   version "0.1.0"
   sha256 :no_check # replace with the Sugrob-#{version}.dmg checksum
 
-  url "https://github.com/Olzhiro4ka/Snow/releases/download/v#{version}/Sugrob-#{version}.dmg"
+  url "https://github.com/Olzhiro4ka/sugrob-macos/releases/download/v#{version}/Sugrob-#{version}.dmg"
   name "Sugrob"
   desc "Snow that settles on your windows and Dock, with no permissions and no network"
-  homepage "https://github.com/Olzhiro4ka/Snow"
+  homepage "https://github.com/Olzhiro4ka/sugrob-macos"
 
   depends_on macos: ">= :sonoma"
 

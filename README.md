@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Olzhiro4ka/Snow/actions/workflows/ci.yml"><img src="https://github.com/Olzhiro4ka/Snow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Olzhiro4ka/sugrob-macos/actions/workflows/ci.yml"><img src="https://github.com/Olzhiro4ka/sugrob-macos/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-24292f" alt="macOS 14 or later">
   <img src="https://img.shields.io/badge/Swift-6-F05138" alt="Swift 6">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-397B70" alt="MIT license"></a>
@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
-  <a href="https://github.com/Olzhiro4ka/Snow/releases">Releases</a> ·
+  <a href="https://github.com/Olzhiro4ka/sugrob-macos/releases">Releases</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
@@ -57,7 +57,7 @@ and the settled snow behaves like snow:
 
 ## Install
 
-1. Download `Sugrob-x.y.z.dmg` from the [GitHub Releases](https://github.com/Olzhiro4ka/Snow/releases).
+1. Download `Sugrob-x.y.z.dmg` from the [GitHub Releases](https://github.com/Olzhiro4ka/sugrob-macos/releases).
 2. Open it and drag **Sugrob** into **Applications**.
 3. Launch it. A snowflake appears in the menu bar.
 
@@ -103,7 +103,7 @@ Requires macOS 14+ and Swift 6: either Xcode 16+ or just the Command Line Tools
 (`xcode-select --install`).
 
 ```sh
-git clone https://github.com/Olzhiro4ka/Snow.git
+git clone https://github.com/Olzhiro4ka/sugrob-macos.git
 cd Snow
 make build    # debug executable; warnings are errors
 make test     # unit tests for the simulation

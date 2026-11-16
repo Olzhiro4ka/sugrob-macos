@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Updated repository links after the GitHub rename to `sugrob-macos`.
 - Updated source documentation to link to the architecture guide after removing the old
   agent notes.
 - Space changes pause window updates until geometry settles, discard polls from the previous
