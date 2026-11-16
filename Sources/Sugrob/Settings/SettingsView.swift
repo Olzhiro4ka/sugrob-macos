@@ -62,6 +62,9 @@ struct SettingsView: View {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
                 Toggle("Precise Dock detection", isOn: $settings.preciseDock)
+                    .onChange(of: settings.preciseDock) { _, enabled in
+                        if enabled { DockLocator.requestAccessibility() }
+                    }
                 Text("Measures the Dock with Accessibility. Off by default; macOS asks for permission when you turn it on.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Restoring precise Dock detection at startup no longer requests Accessibility permission.
+  Only explicitly enabling it in Settings can prompt, and only without existing trust.
+  Without access, Dock detection silently uses its permission-free estimate.
 - Snowplows retain a bounded, mass-based blade load before discharging it and clear
   fresh snow beneath their footprint after surface settling.
 - The screen-edge snowplow is half the size and can be switched off in Settings or the menu.

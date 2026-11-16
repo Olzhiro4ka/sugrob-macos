@@ -24,7 +24,6 @@ final class DockLocator {
     var preciseMode = false {
         didSet {
             guard preciseMode != oldValue else { return }
-            if preciseMode { Self.requestAccessibility() }
             refresh()
         }
     }
@@ -125,7 +124,8 @@ final class DockLocator {
 
     // MARK: Accessibility (opt-in only)
 
-    private static func requestAccessibility() {
+    static func requestAccessibility() {
+        guard !AXIsProcessTrusted() else { return }
         // String literal instead of `kAXTrustedCheckOptionPrompt` (a mutable global in Swift 6).
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
