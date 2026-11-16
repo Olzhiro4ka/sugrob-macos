@@ -14,8 +14,9 @@ These are not up for debate in a PR. Open an issue first if you think one must c
    requires Screen Recording. Accessibility exists only behind the opt-in "Precise Dock
    detection" toggle.
 3. **Click-through, always.** The overlay must never take clicks or focus.
-4. **Cheap.** About 3% CPU while idle-snowing, ≤ 1.5 ms per tick on the main thread, and no
-   GPU work while paused. Measure with `make run ARGS="--hud"` and put the numbers in the PR.
+4. **Keep it light.** Target ≤ 1.5 ms per tick on the main thread and no GPU work while
+   paused. Compare release builds on the same display setup; include `--hud` timings, CPU,
+   hardware and display details in performance PRs.
 5. **Public APIs only, no third-party dependencies.**
 
 ## Getting started
@@ -26,10 +27,10 @@ make test     # SnowCore unit tests (Swift Testing)
 make run ARGS="--hud --debug-surfaces"
 ```
 
-Xcode 16+ or just the Command Line Tools work; there is no `.xcodeproj`. To use Xcode,
+Use macOS 14+ with Swift 6 (Xcode 16+ or compatible Command Line Tools); there is no `.xcodeproj`. To use Xcode,
 open `Package.swift`.
 
-[CLAUDE.md](CLAUDE.md) holds the design notes, the coordinate-space rules and a list of known
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) holds the design notes, the coordinate-space rules and a list of known
 gotchas. Read it before changing the simulation, window tracking or rendering.
 
 ## Code layout
@@ -61,9 +62,10 @@ Manager is on. A `--hud` log helps a lot with performance issues:
 
 ## Releasing (maintainers)
 
-1. Move the `[Unreleased]` entries in `CHANGELOG.md` to `## [x.y.z] - YYYY-MM-DD`.
-2. `git tag vx.y.z && git push origin vx.y.z`.
-3. The Release workflow tests, builds the universal app, packs the `.dmg`, `.zip` and
+1. Run `make build`, `make test` and `make app`; manually check the bundled app on macOS.
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` to `## [x.y.z] - YYYY-MM-DD`.
+3. Commit the changelog, then `git tag vx.y.z && git push origin vx.y.z`.
+4. The Release workflow tests, builds the universal app, packs the `.dmg`, `.zip` and
    checksums, and publishes a GitHub release with the changelog section as notes. Tags with a
    suffix (`v1.0.0-beta.1`) become pre-releases.
 
@@ -79,3 +81,8 @@ ad-hoc signed, and the release notes explain how to open it:
 
 Then update `packaging/sugrob.rb` with the new version and the dmg's SHA-256 from the release's
 `.sha256` file.
+
+## License
+
+Contributions are provided under the project’s [MIT license](LICENSE). Only submit code
+and artwork you have the right to distribute under that license.

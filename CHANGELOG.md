@@ -93,6 +93,9 @@ All notable changes to this project are documented here. The format follows
   cask template in `packaging/`.
 
 ### Changed
+- Prepared public documentation: refreshed English and Russian READMEs, architecture and
+  contribution guides, local-file and credential ignore rules, read-only CI permissions,
+  and inclusion of the MIT license in app bundles.
 - Settled caps skip relaxation until something changes them.
 - Overlays are rebuilt only when screen frames or scale factors change, not when just the
   Dock or menu bar changes the visible frame (flakes no longer reshuffle).

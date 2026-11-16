@@ -1,3 +1,4 @@
+# macOS and Swift build output
 .DS_Store
 /.build/
 /build/
@@ -6,3 +7,25 @@
 *.xcodeproj
 xcuserdata/
 DerivedData/
+
+# Local editor and agent state
+/.idea/
+/.vscode/
+*.code-workspace
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+/.codex/
+/graphify-out/
+
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.key
+*.mobileprovision
+
+# Local diagnostics
+*.log
