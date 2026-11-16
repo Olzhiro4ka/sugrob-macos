@@ -13,8 +13,6 @@ enum PauseReason: Hashable {
     case onBattery
     /// Mission Control / App Exposé is showing (and a short grace period after it closes).
     case missionControl
-    /// Every screen shows a fullscreen app (per-screen hiding handles the partial case).
-    case allFullscreen
 }
 
 /// Watches lock, sleep, screensaver, fast user switching and shutdown via public notifications.

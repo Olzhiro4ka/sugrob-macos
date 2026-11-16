@@ -36,6 +36,8 @@ final class DockLocator {
                            name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         center.addObserver(self, selector: #selector(appsChanged),
                            name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        center.addObserver(self, selector: #selector(appsChanged),
+                           name: NSWorkspace.didActivateApplicationNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appsChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         // Catches preference changes (tile size, orientation, auto-hide) that post no notification.

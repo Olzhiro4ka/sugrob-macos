@@ -247,7 +247,7 @@ public final class SnowCap {
 
         guard newFrame.width < old.width else { return displacement }
         // Old columns beyond the new extent fall off.
-        let kick: Float = anchoredLeft ? 25 : -25
+        let kick: Float = anchoredLeft ? Config.resizeSpillHorizontalKick : -Config.resizeSpillHorizontalKick
         for oldIndex in 0..<oldCount {
             let fromAnchor = anchoredLeft
                 ? Float(oldIndex) * oldSpacing
@@ -259,10 +259,43 @@ public final class SnowCap {
             appendSpill(&spills, SnowSpill(
                 position: SIMD2(xOld, newFrame.maxY + oldHeights[oldIndex] * 0.5),
                 mass: oldHeights[oldIndex] * oldSpacing,
-                velocity: SIMD2(kick, 15), source: id
+                velocity: SIMD2(kick, Config.resizeSpillVerticalKick), source: id
             ))
         }
         return displacement
+    }
+
+    /// Resizes a centred surface such as the Dock. Snow that remains over the new frame keeps
+    /// its screen x-coordinate; snow beyond either end falls off both sides.
+    public func updateCentered(frame newFrame: Rect, spills: inout [SnowSpill]) {
+        let old = frame
+        frame = newFrame
+        guard abs(newFrame.minX - old.minX) > 0.5 || abs(newFrame.width - old.width) > 0.5 else { return }
+
+        flushIncoming()
+        let oldHeights = heights
+        let oldSpacing = spacing
+        rebuildColumns(width: newFrame.width)
+        for index in heights.indices {
+            let x = newFrame.minX + Float(index) * spacing
+            heights[index] = Self.sample(oldHeights, at: (x - old.minX) / oldSpacing)
+        }
+
+        for (index, height) in oldHeights.enumerated() where height > 0 {
+            let x = old.minX + Float(index) * oldSpacing
+            guard x < newFrame.minX - oldSpacing * 0.5 || x > newFrame.maxX + oldSpacing * 0.5 else { continue }
+            let kick = x < newFrame.minX ? -Config.resizeSpillHorizontalKick : Config.resizeSpillHorizontalKick
+            appendSpill(&spills, SnowSpill(
+                position: SIMD2(x, newFrame.maxY + height * 0.5), mass: height * oldSpacing,
+                velocity: SIMD2(kick, Config.resizeSpillVerticalKick), source: id
+            ))
+        }
+    }
+
+    /// Reattaches a cap after its window returns from another Space, without loose snow.
+    public func restore(frame newFrame: Rect) {
+        var discarded: [SnowSpill] = []
+        update(frame: newFrame, spills: &discarded)
     }
 
     /// Sheds `fraction` (0…1) of the snow on every column, inheriting `velocity`.
@@ -285,11 +318,31 @@ public final class SnowCap {
         shed(fraction: 1, velocity: velocity, spills: &spills)
     }
 
+    /// Removes the snow crossed by a left-moving blade and returns its area (pt²).
+    /// The angled blade directs that mass sideways, outside this side-view heightmap.
+    @discardableResult
+    public func clearSnow(from oldBladeX: Float, to newBladeX: Float) -> Float {
+        guard newBladeX < oldBladeX, oldBladeX > frame.minX,
+              newBladeX < frame.maxX else { return 0 }
+        // Cross column centres once, regardless of frame rate, including incoming snow.
+        let first = max(0, Int(((newBladeX - frame.minX) / spacing).rounded(.up)))
+        let last = min(columnCount - 1, Int(((oldBladeX - frame.minX) / spacing).rounded(.up)) - 1)
+        guard first <= last else { return 0 }
+        var displaced: Float = 0
+        for index in first...last {
+            displaced += heights[index] + incoming[index]
+            heights[index] = 0
+            incoming[index] = 0
+        }
+        if displaced > 0 { isSettled = false }
+        return displaced * spacing
+    }
+
     /// Knocks off snow touched by a cursor that moved from `from` to `to` (brush of `radius`).
     /// Only the parts of the cap inside `visible` are touched. Returns the mass removed.
     @discardableResult
     public func brush(from: SIMD2<Float>, to: SIMD2<Float>, radius: Float,
-                      velocity: SIMD2<Float>, spills: inout [SnowSpill]) -> Float {
+                      velocity: SIMD2<Float>, fraction: Float = 1, spills: inout [SnowSpill]) -> Float {
         let lowX = min(from.x, to.x) - radius
         let highX = max(from.x, to.x) + radius
         guard highX >= frame.minX, lowX <= frame.maxX else { return 0 }
@@ -310,11 +363,11 @@ public final class SnowCap {
             // The column is a vertical segment; it is hit if the cursor path comes within radius.
             let distance = Self.distance(segmentA: from, segmentB: to, columnX: x, bottom: bottom, top: top)
             guard distance <= radius else { continue }
-            let removed = heights[index]
-            heights[index] = 0
+            let removed = heights[index] * min(max(fraction, 0), 1)
+            heights[index] -= removed
             removedMass += removed * spacing
             appendSpill(&spills, SnowSpill(
-                position: SIMD2(x, bottom + removed * 0.5),
+                position: SIMD2(x, top + 1),
                 mass: removed * spacing, velocity: velocity, source: id
             ))
         }

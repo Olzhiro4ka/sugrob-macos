@@ -15,8 +15,9 @@ final class WindowTracker: Sendable {
     struct Result: Sendable {
         /// Normal windows, front to back, AppKit global points.
         var samples: [WindowSample]
-        /// Mission Control (or App Exposé) is showing: the Dock puts full-screen windows on
-        /// layers 18/20 on screen, and other windows report their *scaled-down* frames.
+        /// Mission Control (or App Exposé) is showing: the Dock puts a layer-18 window on
+        /// screen, and other windows report their *scaled-down* frames. Layer 20 also appears
+        /// on ordinary desktops and must not pause snowfall.
         var missionControl: Bool
         /// Poll duration (s).
         var duration: Double
@@ -53,7 +54,7 @@ final class WindowTracker: Sendable {
             guard let layer = info[kCGWindowLayer as String] as? Int,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t
             else { continue }
-            if dockPIDs.contains(pid) && (layer == 18 || layer == 20) {
+            if dockPIDs.contains(pid) && layer == 18 {
                 missionControl = true
                 continue
             }

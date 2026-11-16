@@ -59,6 +59,7 @@ if [[ -f Resources/AppIcon.icns ]]; then
   cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
   plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
 fi
+cp Resources/SnowplowVariant2.png "$APP/Contents/Resources/SnowplowVariant2.png"
 
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
   codesign --force --sign - --timestamp=none "$APP"

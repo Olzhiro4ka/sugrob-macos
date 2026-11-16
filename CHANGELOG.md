@@ -6,7 +6,34 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The screen-edge snowplow is half the size and can be switched off in Settings or the menu.
+  Its blade removes snow from the screen-edge heightmap by directing it sideways,
+  leaving a clear path without building an oversized wall.
+- Switching windows or Spaces preserves their settled snow without a burst of falling particles.
+- Fullscreen Space transitions no longer stall snowfall while Metal waits for a drawable from
+  an occluded overlay; the overlay redraws as soon as macOS marks it visible again.
+- Space changes now request a window poll immediately. After Mission Control, snowfall resumes
+  as soon as window frames settle instead of always waiting 0.6 seconds.
+- Slightly stronger directional throw when a window starts moving or the cursor brushes snow;
+  small window movements now give detached snow a visible impulse.
+- Moving a window now detaches its snow from the old edge on the first measured displacement.
+  The initial mouse-down poll no longer waits for the idle interval, and detached snow follows
+  the latest movement direction, including quick reversals and downward throws.
+- An upward cursor flick or a fast upward window movement can now throw loose snow upward;
+  its launch speed follows the motion and is capped before it falls and settles again.
+- Loose snow falls more slowly and can settle back on its source window after it stops moving.
+  Window movement sheds snow immediately, even during a careful drag; brushing gives snow a
+  brief hop before it falls.
+- Clearing or disabling the Dock now removes its snow without leaving falling particles over an absent Dock.
+- Fullscreen windows lose their accumulated snow and cannot collect more while fullscreen; windows extending from the Dock to the menu bar are now detected too.
+- Empty desktops resume snowfall after leaving a fullscreen Space; ordinary Dock layer-20 windows no longer trigger a false Mission Control pause.
+- Falling flakes remain visible in fullscreen mode while snow on the fullscreen window and its Dock is suppressed.
+- Dock snow now tracks centred width changes as apps appear, disappear, or become recent; snow beyond either new edge falls off.
+
 ### Added
+- Bottom snow can settle on the Dock or the screen edge. A miniature toy snowplow drives in
+  from the right and clears the screen edge when its snow gets deep.
 - Project skeleton: SwiftPM package (`SnowCore`, `Sugrob`, `SnowCoreTests`), Makefile,
   `scripts/bundle.sh` that assembles an ad-hoc signed `build/Sugrob.app`.
 - Menu bar snowflake with a Snow on/off toggle and Quit. No Dock icon (`LSUIElement`).
@@ -24,13 +51,13 @@ All notable changes to this project are documented here. The format follows
   covered parts of an edge show no snow, heightmap caps with angle-of-repose relaxation,
   lumpy ceiling, and droop over rounded corners. Caps move with their window; disappearing
   windows are debounced so Space switches don't wipe the snow.
-- Fullscreen apps pause the snow on their display only.
+- Fullscreen apps keep falling flakes while suppressing snow caps on the window and Dock.
 - `--debug-surfaces` (window outlines, top edges, visible intervals) and `--instant-snow`.
 - Knocked-off snow: debris particles under gravity with motion streaks, landing on windows
   below (snow transfers from window to window).
 - Interactions: narrowing a window drops the snow from the removed part; moving a window
-  sheds its snow with the window's momentum (snow no longer rides along); the cursor brushes
-  snow off caps; closed/minimized windows drop their snow.
+  immediately sheds its entire cap; the cursor brushes snow off caps;
+  closed/minimized windows drop their snow.
 - `--fps N` launch flag; HUD shows frame-pacing (worst gap, drops) and debris count.
 - Snow on the Dock: its frame is estimated without permissions from the screen's visible
   frame and the Dock preferences (tile size, pinned apps, folders, recents, running apps),

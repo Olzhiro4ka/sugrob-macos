@@ -29,6 +29,46 @@ struct SnowCapTests {
         #expect(abs(cap.mass - 12) < 1e-3)
     }
 
+    @Test func bladeDischargesOnlySnowItCrosses() {
+        let cap = makeCap(radius: 0)
+        cap.fill(fraction: 0.8)
+        cap.deposit(at: 205, amount: 5)
+        let before = cap.mass
+        let ahead = cap.heights[49]
+        let removed = cap.clearSnow(from: 210, to: 200)
+        #expect(removed > 0)
+        #expect(abs(cap.mass + removed - before) < 0.01)
+        #expect(cap.heights[49] == ahead)
+        #expect(cap.heights[52] == 0)
+        #expect(cap.clearSnow(from: 210, to: 200) == 0)
+    }
+
+    @Test func bladeDischargeDoesNotDependOnStepSize() {
+        let largeStep = makeCap(radius: 0)
+        let smallSteps = makeCap(radius: 0)
+        largeStep.fill(fraction: 0.8)
+        smallSteps.fill(fraction: 0.8)
+        let removed = largeStep.clearSnow(from: 210, to: 200)
+        var incremental: Float = 0
+        for step in 0..<40 {
+            let old = 210 - Float(step) * 0.25
+            incremental += smallSteps.clearSnow(from: old, to: old - 0.25)
+        }
+        #expect(abs(removed - incremental) < 0.01)
+        for (large, small) in zip(largeStep.heights, smallSteps.heights) {
+            #expect(abs(large - small) < 0.001)
+        }
+    }
+
+    @Test func bladeDischargesSnowAtTheScreenEdge() {
+        let cap = makeCap(radius: 0)
+        cap.deposit(at: frame.minX + 3, amount: 20)
+        let before = cap.mass
+        let exported = cap.clearSnow(from: frame.minX + 8, to: frame.minX - 1)
+        #expect(exported > 0)
+        #expect(abs(cap.mass + exported - before) < 0.01)
+    }
+
     @Test func ceilingLimitsHeight() {
         let cap = makeCap()
         var spills: [SnowSpill] = []
@@ -120,6 +160,21 @@ struct SnowCapTests {
         #expect(spills.allSatisfy { $0.position.x < narrower.minX && $0.velocity.x < 0 })
         let after = Array(cap.heights.suffix(60))
         for (a, b) in zip(after, rightHeights) { #expect(abs(a - b) < 0.05) }
+    }
+
+    @Test func dockResizeKeepsSnowAtItsScreenPosition() {
+        let dock = Rect(x: 200, y: 3, width: 1000, height: 84)
+        let cap = SnowCap(id: World.dockCapID, frame: dock, cornerRadius: Config.dockCornerRadius)
+        for x: Float in [250, 400, 1000, 1150] { cap.deposit(at: x, amount: 50) }
+        var spills: [SnowSpill] = []
+        let narrower = Rect(x: 300, y: 3, width: 800, height: 84)
+        cap.updateCentered(frame: narrower, spills: &spills)
+
+        #expect(cap.heights[Int((400 - narrower.minX) / cap.spacing)] > 0)
+        #expect(cap.heights[Int((1000 - narrower.minX) / cap.spacing)] > 0)
+        #expect(cap.heights[Int((500 - narrower.minX) / cap.spacing)] == 0)
+        #expect(spills.contains { $0.position.x < narrower.minX })
+        #expect(spills.contains { $0.position.x > narrower.maxX })
     }
 
     @Test func depositEasesIn() {

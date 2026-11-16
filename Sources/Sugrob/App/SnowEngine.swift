@@ -21,16 +21,18 @@ final class SnowEngine: NSObject {
     private var lastTimestamp: CFTimeInterval?
     private var nextPoll: CFTimeInterval = 0
     private var pollInFlight = false
+    private var wasMouseDown = false
     /// Duration of a poll that completed since the last HUD frame (s).
     private var completedPollSeconds: Double?
     private var currentFPS = Config.idleFPS
     private var pauseReasons: Set<PauseReason> = []
-    /// Poll that runs only while the tick is stopped for window-state reasons (fullscreen
-    /// everywhere, Mission Control), to notice when that ends.
+    /// Poll that runs while Mission Control stops the tick, to notice when it ends.
     private var watchTimer: Timer?
     private var watchInterval: TimeInterval = 0
-    /// Pause reasons that come from the window list itself and need the watch poll to clear.
-    private static let windowStateReasons: Set<PauseReason> = [.allFullscreen, .missionControl]
+    private var missionControlRecoverySamples: [WindowSample]?
+    private var missionControlRecoveryStart: CFTimeInterval?
+    /// Displays covered by a fullscreen window; their Dock cap is suppressed.
+    private var fullscreenScreens: Set<Int> = []
 
     init?(options: LaunchOptions, settings: SettingsStore) {
         guard let gpu = SnowGPU() else { return nil }
@@ -50,8 +52,15 @@ final class SnowEngine: NSObject {
 
         screens.onRebuild = { [weak self] in self?.overlaysRebuilt() }
         session.onChange = { [weak self] reason, active in self?.setPaused(reason, active) }
-        session.onSpaceChange = { [weak self] in self?.nextPoll = 0 }
-        dock.onChange = { [weak self] frame in self?.world.setDock(frame) }
+        session.onSpaceChange = { [weak self] in
+            guard let self else { return }
+            self.missionControlRecoverySamples = nil
+            self.missionControlRecoveryStart = nil
+            self.updateWatch()
+            self.nextPoll = 0
+            self.requestPoll()
+        }
+        dock.onChange = { [weak self] _ in self?.updateDockSurface() }
         power.onChange = { [weak self] _ in self?.updateBatteryPause() }
         apply(settings, preciseDockOverride: options.preciseDock)
         dock.refresh()
@@ -66,10 +75,12 @@ final class SnowEngine: NSObject {
         world.intensity = settings.intensity
         world.snowOnWindows = settings.snowOnWindows
         if !settings.snowOnWindows {
-            for cap in world.caps where cap.id != World.dockCapID { cap.clear() }
+            world.clearWindowSnow()
         }
-        world.snowOnDock = settings.snowOnDock
-        if settings.snowOnDock { world.setDock(dock.frame) }
+        world.snowOnDock = settings.bottomSurface == .dock
+        world.bottomSurface = settings.bottomSurface
+        world.snowplowEnabled = settings.snowplowEnabled
+        updateDockSurface()
         world.maxDriftHeight = Float(settings.maxDriftHeight)
         world.windScale = Float(settings.windStrength)
         frameRateMode = settings.frameRate
@@ -85,6 +96,18 @@ final class SnowEngine: NSObject {
 
     private func updateBatteryPause() {
         setPaused(.onBattery, pauseOnBattery && power.isOnBattery)
+    }
+
+    private func updateDockSurface() {
+        guard let frame = dock.frame else {
+            world.setDock(nil)
+            return
+        }
+        let dockCenter = SIMD2(frame.midX, frame.maxY)
+        let covered = screens.overlays.enumerated().contains { index, overlay in
+            fullscreenScreens.contains(index) && overlay.rect.contains(dockCenter)
+        }
+        world.setDock(covered ? nil : frame)
     }
 
     func setPaused(_ reason: PauseReason, _ active: Bool) {
@@ -118,6 +141,8 @@ final class SnowEngine: NSObject {
         let mouseDown = NSEvent.pressedMouseButtons != 0
         let mouse = NSEvent.mouseLocation
         world.setCursor(SIMD2(Float(mouse.x), Float(mouse.y)))
+        if mouseDown && !wasMouseDown { nextPoll = 0 }
+        wasMouseDown = mouseDown
 
         if start >= nextPoll && !pollInFlight {
             requestPoll()
@@ -151,54 +176,68 @@ final class SnowEngine: NSObject {
             guard let self else { return }
             pollInFlight = false
             completedPollSeconds = result.duration
-            handleMissionControl(result.missionControl)
-            // Ignore window geometry while paused for anything but fullscreen: during Mission
-            // Control frames are scaled down and would look like every window jumped.
-            guard !isPaused || pauseReasons == [.allFullscreen] else { return }
+            handleMissionControl(result)
+            // Ignore window geometry while paused: during Mission Control frames are scaled
+            // down and would look like every window jumped.
+            guard !isPaused else { return }
             world.ingestWindows(result.samples)
             detectFullscreen(result.samples)
         }
     }
 
-    private var missionControlEnding = false
-
-    private func handleMissionControl(_ showing: Bool) {
-        if showing {
-            missionControlEnding = false
+    private func handleMissionControl(_ result: WindowTracker.Result) {
+        if result.missionControl {
+            let wasRecovering = missionControlRecoveryStart != nil
+            missionControlRecoverySamples = nil
+            missionControlRecoveryStart = nil
+            if wasRecovering { updateWatch() }
             if !pauseReasons.contains(.missionControl) { setPaused(.missionControl, true) }
-        } else if pauseReasons.contains(.missionControl), !missionControlEnding {
-            // Windows animate back to their frames; resume once they're home.
-            missionControlEnding = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, self.missionControlEnding else { return }
-                    self.missionControlEnding = false
-                    self.nextPoll = 0
-                    self.setPaused(.missionControl, false)
+        } else if pauseReasons.contains(.missionControl) {
+            let now = CACurrentMediaTime()
+            if let previous = missionControlRecoverySamples {
+                let framesSettled = previous.count == result.samples.count &&
+                    zip(previous, result.samples).allSatisfy { old, current in
+                        old.id == current.id && old.frame.isClose(
+                            to: current.frame, tolerance: Config.missionControlFrameTolerance
+                        )
+                    }
+                if framesSettled || now - (missionControlRecoveryStart ?? now) >= Config.missionControlRecoveryMaxWait {
+                    missionControlRecoverySamples = nil
+                    missionControlRecoveryStart = nil
+                    nextPoll = 0
+                    setPaused(.missionControl, false)
+                } else {
+                    missionControlRecoverySamples = result.samples
                 }
+            } else {
+                missionControlRecoverySamples = result.samples
+                missionControlRecoveryStart = now
+                updateWatch()
             }
         }
     }
 
-    /// A layer-0 window whose bounds equal its screen's frame means a fullscreen app there.
+    /// A layer-0 window covering a screen means a fullscreen app there.
     private func detectFullscreen(_ samples: [WindowSample]) {
         var covered: Set<Int> = []
-        for (index, overlay) in screens.overlays.enumerated()
-        where samples.contains(where: { $0.frame.isClose(to: overlay.rect, tolerance: 1) }) {
-            covered.insert(index)
+        var fullscreenIDs: Set<UInt32> = []
+        for (index, overlay) in screens.overlays.enumerated() {
+            let visible = CoordinateSpace.core(overlay.screen.visibleFrame)
+            for sample in samples where FullscreenCoverage.covers(sample.frame, screen: overlay.rect,
+                                                                 visible: visible) {
+                covered.insert(index)
+                fullscreenIDs.insert(sample.id)
+            }
         }
-        screens.setFullscreen(covered)
-        let all = screens.allHiddenByFullscreen
-        if all != pauseReasons.contains(.allFullscreen) {
-            setPaused(.allFullscreen, all)
-        }
+        world.setFullscreenWindows(fullscreenIDs)
+        fullscreenScreens = covered
+        updateDockSurface()
     }
 
     private func updateWatch() {
-        let reasons = pauseReasons
-        let needsWatch = !reasons.isEmpty && reasons.isSubset(of: Self.windowStateReasons)
-        // Mission Control needs a quick reaction when it closes; fullscreen can be lazier.
-        let interval: TimeInterval = reasons.contains(.missionControl) ? 0.25 : 1
+        let needsWatch = pauseReasons == [.missionControl]
+        let interval = missionControlRecoveryStart == nil
+            ? Config.missionControlWatchInterval : Config.missionControlRecoveryPollInterval
         if needsWatch, watchTimer == nil || watchInterval != interval {
             watchTimer?.invalidate()
             let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
@@ -226,6 +265,8 @@ final class SnowEngine: NSObject {
         setFrameRate(currentFPS)
         hud?.attach(to: primary.window.snowView)
         nextPoll = 0
+        fullscreenScreens = []
+        updateDockSurface()
         applyPauseState()
     }
 

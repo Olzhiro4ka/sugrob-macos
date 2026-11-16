@@ -37,7 +37,12 @@ struct SettingsView: View {
                 }
 
                 Toggle("Snow on windows", isOn: $settings.snowOnWindows)
-                Toggle("Snow on the Dock", isOn: $settings.snowOnDock)
+                Picker("Bottom snow", selection: $settings.bottomSurface) {
+                    Text("Dock").tag(BottomSurface.dock)
+                    Text("Screen edge").tag(BottomSurface.screen)
+                }
+                Toggle("Snowplow", isOn: $settings.snowplowEnabled)
+                    .disabled(settings.bottomSurface != .screen)
             }
 
             Section("Performance") {

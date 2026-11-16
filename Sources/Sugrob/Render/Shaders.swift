@@ -174,5 +174,31 @@ enum Shaders {
     fragment float4 rectFragment(RectOut in [[stage_in]]) {
         return in.color;
     }
+
+    // MARK: Toy snowplow sprite and snow carried by its blade
+
+    struct PlowOut {
+        float4 position [[position]];
+        float2 uv;
+    };
+
+    vertex PlowOut plowVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
+                              const device float4 *plows [[buffer(0)]],
+                              constant Uniforms &u [[buffer(1)]]) {
+        float4 p = plows[iid];
+        float2 corner = float2((vid & 1) ? 1.0 : 0.0, (vid & 2) ? 1.0 : 0.0);
+        PlowOut out;
+        out.uv = float2(corner.x, 1.0 - corner.y);
+        out.position = toClip(p.xy + corner * p.zw, u);
+        return out;
+    }
+
+    fragment float4 plowFragment(PlowOut in [[stage_in]],
+                                texture2d<float> sprite [[texture(0)]]) {
+        constexpr sampler imageSampler(filter::linear, address::clamp_to_edge);
+        float4 color = sprite.sample(imageSampler, in.uv);
+        color.rgb *= color.a;
+        return color;
+    }
     """
 }

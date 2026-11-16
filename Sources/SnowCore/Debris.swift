@@ -1,7 +1,7 @@
 /// Fixed-capacity pool of knocked-off snow particles, struct-of-arrays.
 ///
-/// Particles fall under gravity with light drag and may land on another visible cap (that is how
-/// snow transfers from window to window). They never land on the cap they came from.
+/// Particles fall under gravity with light drag and may land on any visible, resting cap,
+/// including their source after a brief upward brush motion.
 public struct DebrisPool {
     public let capacity: Int
     public private(set) var count = 0

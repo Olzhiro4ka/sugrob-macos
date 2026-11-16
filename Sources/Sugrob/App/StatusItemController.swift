@@ -47,7 +47,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(intensity)
 
         menu.addItem(item("Snow on Windows", #selector(toggleWindows), on: settings.snowOnWindows))
-        menu.addItem(item("Snow on Dock", #selector(toggleDock), on: settings.snowOnDock))
+        let bottom = NSMenuItem(title: "Bottom Snow", action: nil, keyEquivalent: "")
+        let bottomMenu = NSMenu()
+        bottomMenu.addItem(item("Dock", #selector(chooseDock), on: settings.bottomSurface == .dock))
+        bottomMenu.addItem(item("Screen Edge", #selector(chooseScreen), on: settings.bottomSurface == .screen))
+        bottom.submenu = bottomMenu
+        menu.addItem(bottom)
+        let plow = item("Snowplow", #selector(toggleSnowplow), on: settings.snowplowEnabled)
+        plow.isEnabled = settings.bottomSurface == .screen
+        menu.addItem(plow)
         menu.addItem(.separator())
         menu.addItem(item("Clear All Snow", #selector(clearSnow)))
         menu.addItem(item("Settings…", #selector(openSettings), key: ","))
@@ -73,8 +81,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    @objc private func toggleSnowplow() { settings.snowplowEnabled.toggle() }
     @objc private func toggleWindows() { settings.snowOnWindows.toggle() }
-    @objc private func toggleDock() { settings.snowOnDock.toggle() }
+    @objc private func chooseDock() { settings.bottomSurface = .dock }
+    @objc private func chooseScreen() { settings.bottomSurface = .screen }
     @objc private func clearSnow() { onClearSnow?() }
     @objc private func openSettings() { onOpenSettings?() }
 }

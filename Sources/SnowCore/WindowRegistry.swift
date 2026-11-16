@@ -12,9 +12,8 @@ public struct WindowSample: Equatable, Sendable {
 /// Turns discrete window-list polls into per-window state: velocity, z-order, and debounced
 /// disappearance.
 ///
-/// Positions are *not* extrapolated between polls: snow no longer rides along with a moving
-/// window (it sheds), and extrapolation invented movement that never happened, which then shed
-/// snow off windows that had barely moved.
+/// Positions are *not* extrapolated between polls: snow reacts to measured displacement,
+/// and extrapolation would invent movement that never happened.
 public final class WindowRegistry {
     public struct Entry: Sendable {
         public let id: UInt32
@@ -26,6 +25,8 @@ public final class WindowRegistry {
         public internal(set) var sampleTime: Float
         /// Smoothed origin velocity (pt/s).
         public internal(set) var velocity: SIMD2<Float> = .zero
+        /// Unsmoothed velocity from the latest pair of polls (pt/s), used for snow launch.
+        public internal(set) var rawVelocity: SIMD2<Float> = .zero
         /// Consecutive polls the window was missing from.
         public internal(set) var missingPolls = 0
         /// Position in the latest poll, 0 = frontmost. Missing windows keep their last value.
@@ -65,11 +66,15 @@ public final class WindowRegistry {
                 let delta = sample.frame.origin - entry.frame.origin
                 if delta == .zero {
                     entry.velocity = .zero
+                    entry.rawVelocity = .zero
                 } else if dt > 0 {
                     let raw = delta / dt
+                    entry.rawVelocity = raw
                     entry.velocity = entry.velocity == .zero
                         ? raw
                         : entry.velocity + (raw - entry.velocity) * Config.velocitySmoothing
+                } else {
+                    entry.rawVelocity = .zero
                 }
                 if sample.frame != entry.frame || entry.zIndex != z || !entry.isPresent {
                     changes.anyChange = true
@@ -93,6 +98,7 @@ public final class WindowRegistry {
             if entry.isPresent { changes.anyChange = true }
             entry.missingPolls += 1
             entry.velocity = .zero
+            entry.rawVelocity = .zero
             if entry.missingPolls >= Config.disappearPolls {
                 entries[id] = nil
                 changes.disappeared.append(entry)

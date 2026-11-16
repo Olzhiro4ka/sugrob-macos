@@ -17,13 +17,14 @@
 -->
 
 **Sugrob** (Russian *сугроб*, "snowdrift") is a tiny menu bar app that makes it snow over
-everything on your screen. Flakes settle on the top edges of your windows and on the Dock,
+everything on your screen. Flakes settle on the top edges of your windows and on the Dock or screen edge,
 and the settled snow behaves like snow:
 
 - **resize** a window and the snow past the new edge falls off;
 - **move** a window and the snow doesn't ride along: it slides off, and a quick jerk flings it;
 - **brush** the snow with the cursor and it crumbles into falling particles;
 - push snow **off the Dock** with the cursor;
+- watch a miniature snowplow clear snow when it piles up along the screen edge;
 - snow knocked off one window lands on the window below it and **piles up there**.
 
 ## No permissions, no network
@@ -72,7 +73,9 @@ Click the snowflake in the menu bar:
 |---|---|
 | **Snow** | Turn the snow on or off. The snowflake dims when it is off. |
 | **Intensity** | Light, Medium or Blizzard. |
-| **Snow on Windows** / **Snow on Dock** | Choose where snow settles. |
+| **Snow on Windows** | Toggle snow on window edges. |
+| **Bottom Snow** | Choose the Dock or the screen edge. |
+| **Snowplow** | Enable or disable the snowplow on the screen edge. |
 | **Clear All Snow** | Drop everything that has piled up. |
 | **Settings…** (⌘,) | The settings window, below. |
 

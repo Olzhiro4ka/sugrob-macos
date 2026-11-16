@@ -7,19 +7,20 @@ final class ScreenManager {
     struct Overlay {
         let window: OverlayWindow
         let renderer: SnowRenderer
+        let screen: NSScreen
         let rect: Rect
     }
 
     private let gpu: SnowGPU
     private let world: World
     private(set) var overlays: [Overlay] = []
+    /// Overlays skipped while macOS considers them fully occluded during Space transitions.
+    private var occludedOverlays: Set<Int> = []
     /// Called after overlays were rebuilt.
     var onRebuild: (() -> Void)?
 
-    /// Global switch (pause); per-screen fullscreen hiding is applied on top.
+    /// Global switch for user and session pauses.
     private var globallyVisible = true
-    /// Indices of overlays hidden because a fullscreen window covers that screen.
-    private(set) var fullscreenHidden: Set<Int> = []
 
     var debugSurfaces = false {
         didSet { for overlay in overlays { overlay.renderer.debugSurfaces = debugSurfaces } }
@@ -37,24 +38,20 @@ final class ScreenManager {
 
     var screenRects: [Rect] { overlays.map(\.rect) }
 
-    var allHiddenByFullscreen: Bool {
-        !overlays.isEmpty && fullscreenHidden.count == overlays.count
-    }
-
     func setVisible(_ visible: Bool) {
         globallyVisible = visible
         applyVisibility()
     }
 
-    /// Hides overlays whose screen is covered by a fullscreen window; others keep snowing.
-    func setFullscreen(_ indices: Set<Int>) {
-        guard indices != fullscreenHidden else { return }
-        fullscreenHidden = indices
-        applyVisibility()
-    }
-
     func render() {
-        for (index, overlay) in overlays.enumerated() where !fullscreenHidden.contains(index) {
+        for (index, overlay) in overlays.enumerated() {
+            guard overlay.window.occlusionState.contains(.visible) else {
+                occludedOverlays.insert(index)
+                continue
+            }
+            if occludedOverlays.remove(index) != nil {
+                overlay.renderer.invalidate()
+            }
             overlay.window.snowView.draw()
         }
     }
@@ -85,8 +82,8 @@ final class ScreenManager {
     }
 
     private func applyVisibility() {
-        for (index, overlay) in overlays.enumerated() {
-            if globallyVisible && !fullscreenHidden.contains(index) {
+        for overlay in overlays {
+            if globallyVisible {
                 if !overlay.window.isVisible {
                     overlay.renderer.invalidate()
                     overlay.window.orderFrontRegardless()
@@ -98,19 +95,20 @@ final class ScreenManager {
     }
 
     private func rebuild() {
+        occludedOverlays.removeAll()
         for overlay in overlays {
             overlay.window.snowView.delegate = nil
             overlay.window.orderOut(nil)
             overlay.window.close()
         }
-        fullscreenHidden = []
         layoutSignature = Self.currentSignature()
         overlays = NSScreen.screens.compactMap { screen in
             let window = OverlayWindow(screen: screen, device: gpu.device)
             guard let renderer = SnowRenderer(gpu: gpu, world: world, screen: screen) else { return nil }
             renderer.debugSurfaces = debugSurfaces
             window.snowView.delegate = renderer
-            return Overlay(window: window, renderer: renderer, rect: CoordinateSpace.core(screen.frame))
+            return Overlay(window: window, renderer: renderer, screen: screen,
+                           rect: CoordinateSpace.core(screen.frame))
         }
         applyVisibility()
         world.setScreens(screenRects)

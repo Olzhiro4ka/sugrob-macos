@@ -58,6 +58,8 @@ final class SettingsStore {
         static let intensity = "intensity"
         static let snowOnWindows = "snowOnWindows"
         static let snowOnDock = "snowOnDock"
+        static let bottomSurface = "bottomSurface"
+        static let snowplowEnabled = "snowplowEnabled"
         static let maxDriftHeight = "maxDriftHeight"
         static let windStrength = "windStrength"
         static let frameRate = "frameRate"
@@ -73,6 +75,8 @@ final class SettingsStore {
     var intensity: Intensity { didSet { save(intensity.rawValue, Key.intensity) } }
     var snowOnWindows: Bool { didSet { save(snowOnWindows, Key.snowOnWindows) } }
     var snowOnDock: Bool { didSet { save(snowOnDock, Key.snowOnDock) } }
+    var bottomSurface: BottomSurface { didSet { save(bottomSurface.rawValue, Key.bottomSurface) } }
+    var snowplowEnabled: Bool { didSet { save(snowplowEnabled, Key.snowplowEnabled) } }
     /// Points, within `Config.capMaxHeightRange`.
     var maxDriftHeight: Double { didSet { save(maxDriftHeight, Key.maxDriftHeight) } }
     /// Multiplier, within `Config.windScaleRange`.
@@ -89,6 +93,8 @@ final class SettingsStore {
             Key.intensity: Intensity.medium.rawValue,
             Key.snowOnWindows: true,
             Key.snowOnDock: true,
+            Key.bottomSurface: BottomSurface.dock.rawValue,
+            Key.snowplowEnabled: true,
             Key.maxDriftHeight: Double(Config.capMaxHeight),
             Key.windStrength: 1.0,
             Key.frameRate: FrameRateMode.balanced.rawValue,
@@ -99,6 +105,8 @@ final class SettingsStore {
         intensity = Intensity(rawValue: defaults.string(forKey: Key.intensity) ?? "") ?? .medium
         snowOnWindows = defaults.bool(forKey: Key.snowOnWindows)
         snowOnDock = defaults.bool(forKey: Key.snowOnDock)
+        bottomSurface = BottomSurface(rawValue: defaults.string(forKey: Key.bottomSurface) ?? "") ?? .dock
+        snowplowEnabled = defaults.bool(forKey: Key.snowplowEnabled)
         maxDriftHeight = defaults.double(forKey: Key.maxDriftHeight)
         windStrength = defaults.double(forKey: Key.windStrength)
         frameRate = FrameRateMode(rawValue: defaults.string(forKey: Key.frameRate) ?? "") ?? .balanced

@@ -16,6 +16,8 @@ final class SnowGPU {
     let capPipeline: MTLRenderPipelineState
     let debrisPipeline: MTLRenderPipelineState
     let rectPipeline: MTLRenderPipelineState
+    let plowPipeline: MTLRenderPipelineState
+    let plowTexture: MTLTexture
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
@@ -43,6 +45,13 @@ final class SnowGPU {
             capPipeline = try pipeline("capVertex", "capFragment")
             debrisPipeline = try pipeline("debrisVertex", "debrisFragment")
             rectPipeline = try pipeline("rectVertex", "rectFragment")
+            plowPipeline = try pipeline("plowVertex", "plowFragment")
+            let spriteURL = Bundle.main.url(forResource: "SnowplowVariant2", withExtension: "png")
+                ?? URL(fileURLWithPath: "Resources/SnowplowVariant2.png")
+            plowTexture = try MTKTextureLoader(device: device).newTexture(
+                URL: spriteURL,
+                options: [.SRGB: false, .origin: MTKTextureLoader.Origin.topLeft]
+            )
         } catch {
             NSLog("Sugrob: failed to build Metal pipeline: \(error)")
             return nil
@@ -66,6 +75,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         let caps: MTLBuffer
         let debris: MTLBuffer
         let debug: MTLBuffer
+        let plows: MTLBuffer
     }
 
     private let gpu: SnowGPU
@@ -99,9 +109,11 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
             guard let flakes = gpu.device.makeBuffer(length: vectorSize * Config.flakeCapacity, options: .storageModeShared),
                   let caps = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxCapSegments, options: .storageModeShared),
                   let debris = gpu.device.makeBuffer(length: vectorSize * 2 * Config.debrisCapacity, options: .storageModeShared),
-                  let debug = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxDebugRects, options: .storageModeShared)
+                  let debug = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxDebugRects, options: .storageModeShared),
+                  let plows = gpu.device.makeBuffer(length: vectorSize * 16, options: .storageModeShared)
             else { return nil }
-            slots.append(Slot(flakes: flakes, caps: caps, debris: debris, debug: debug))
+            slots.append(Slot(flakes: flakes, caps: caps, debris: debris, debug: debug,
+                              plows: plows))
         }
         self.slots = slots
         super.init()
@@ -124,8 +136,9 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         let capCount = writeCapSegments(into: slot.caps)
         let debrisCount = writeDebris(into: slot.debris)
         let debugCount = debugSurfaces ? writeDebugRects(into: slot.debug) : 0
+        let plowCount = writePlows(into: slot.plows)
         lastCapSegments = capCount
-        let hasContent = flakeCount + capCount + debrisCount + debugCount > 0
+        let hasContent = flakeCount + capCount + debrisCount + debugCount + plowCount > 0
         if !hasContent && !lastFrameHadContent {
             inFlight.signal()
             return
@@ -157,6 +170,8 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         draw(gpu.capPipeline, slot.caps, capCount)
         draw(gpu.flakePipeline, slot.flakes, flakeCount)
         draw(gpu.debrisPipeline, slot.debris, debrisCount)
+        encoder.setFragmentTexture(gpu.plowTexture, index: 0)
+        draw(gpu.plowPipeline, slot.plows, plowCount)
         draw(gpu.rectPipeline, slot.debug, debugCount)
 
         encoder.endEncoding()
@@ -175,6 +190,19 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
     }
 
     // MARK: Instance data
+
+    private func writePlows(into buffer: MTLBuffer) -> Int {
+        let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: 16)
+        var count = 0
+        for plow in world.plows where plow.screenIndex < 16 {
+            let size = Config.plowSize
+            guard screenRect.intersects(circleAt: SIMD2(plow.x + size.x / 2, plow.y + size.y / 2),
+                                        radius: size.x) else { continue }
+            destination[count] = SIMD4(plow.x, plow.y, size.x, size.y)
+            count += 1
+        }
+        return count
+    }
 
     /// Copies flakes that touch this overlay's screen; returns how many.
     private func writeFlakes(into buffer: MTLBuffer) -> Int {

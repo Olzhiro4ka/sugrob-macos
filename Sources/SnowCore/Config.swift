@@ -55,10 +55,20 @@ public enum Config {
     public static let pollIntervalActive: Float = 1.0 / 30
     /// How long after the last window change polling stays fast (s).
     public static let pollActiveWindow: Float = 0.5
+    /// Mission Control presence polling interval while its animation is showing (s).
+    public static let missionControlWatchInterval = 0.25
+    /// Polling interval while waiting for window frames to settle after Mission Control (s).
+    public static let missionControlRecoveryPollInterval = 0.05
+    /// Longest recovery pause when window frames keep changing (s).
+    public static let missionControlRecoveryMaxWait = 0.6
+    /// Maximum window-frame change considered settled after Mission Control (pt).
+    public static let missionControlFrameTolerance: Float = 2
     /// Weight of the newest sample in the exponentially smoothed velocity (0…1).
     public static let velocitySmoothing: Float = 0.6
     /// Visible intervals shorter than this are dropped (pt).
     public static let minVisibleInterval: Float = 2
+    /// Allowed uncovered edge when deciding if a window fills a display (pt).
+    public static let fullscreenEdgeTolerance: Float = 2
 
     // MARK: Snow caps
 
@@ -98,6 +108,18 @@ public enum Config {
     public static let instantSnowFill: Float = 0.9
     /// Hard bound on simultaneously tracked caps (count).
     public static let maxCaps = 256
+    /// Time to retain an off-screen window's snow for a Space or app switch (s).
+    public static let hiddenWindowSnowLifetime: Float = 120
+    /// Mean screen-edge snow height that starts a plow pass (fraction of max drift height).
+    public static let plowTriggerFraction: Float = 0.65
+    /// Snowplow travel speed from right to left (pt/s).
+    public static let plowSpeed: Float = 50
+    /// Displayed sprite dimensions and blade contact offset (pt).
+    public static let plowSize = SIMD2<Float>(77, 45)
+    public static let plowBladeOffset: Float = 4
+    public static let plowBottomOffset: Float = 5
+    /// Minimum time between plow passes on one display (s).
+    public static let plowCooldown: Float = 15
     /// Hard bound on spill events buffered per step (count).
     public static let maxSpillsPerStep = 4096
 
@@ -127,13 +149,13 @@ public enum Config {
     /// with stochastic rounding, so mass is conserved on average.
     public static let debrisParticleMass: Float = 4
     /// Gravity (pt/s²).
-    public static let gravity: Float = 1200
+    public static let gravity: Float = 500
     /// Linear air drag (1/s).
     public static let debrisDrag: Float = 0.8
     /// Maximum life of a particle (s).
     public static let debrisMaxLife: Float = 6
     /// Random velocity added to every new particle (pt/s, ± per axis).
-    public static let debrisJitter: SIMD2<Float> = [30, 25]
+    public static let debrisJitter: SIMD2<Float> = [12, 10]
     /// Debris radius range (pt).
     public static let debrisRadius: ClosedRange<Float> = 0.9...2.0
     /// Debris opacity range.
@@ -143,21 +165,36 @@ public enum Config {
 
     /// Window displacement per step below which nothing is shed (pt); filters bounds rounding.
     public static let shedDeadZone: Float = 0.3
-    /// Displacement per step that sheds a whole cap (pt). Snow does not ride along with a
-    /// moving window: any real movement sheds in proportion, a drag sheds everything quickly.
-    public static let shedDistance: Float = 6
-    /// Fraction of the window velocity passed on to shed snow (0…1).
-    public static let shedVelocityInherit: Float = 0.75
+    /// Horizontal speed of snow spilling from a resized surface (pt/s).
+    public static let resizeSpillHorizontalKick: Float = 25
+    /// Initial upward speed of snow spilling from a resized surface (pt/s).
+    public static let resizeSpillVerticalKick: Float = 15
+    /// Fraction of window velocity passed to detached snow in both axes (0…1).
+    public static let shedVelocityInherit: Float = 0.85
+    /// Minimum launch speed in an axis where the window actually moved (pt/s).
+    public static let shedMinLaunchSpeed: Float = 60
+    /// Maximum speed per axis of snow detached by a moving window (pt/s).
+    public static let shedMaxLaunchSpeed: Float = 700
     /// A window must rest this long before it collects snow again (s).
     public static let settleDelay: Float = 0.3
+    /// Brief rest before loose snow can land on a window again (s).
+    public static let debrisLandingDelay: Float = 0.06
     /// Cursor brush radius (pt).
     public static let brushRadius: Float = 10
     /// Minimum cursor movement per step for the brush to act (pt).
     public static let brushMinMove: Float = 0.5
-    /// Fraction of the cursor velocity passed on to brushed snow (0…1).
-    public static let brushVelocityInherit: Float = 0.35
-    /// Upward kick of brushed snow (pt/s).
-    public static let brushKick: Float = 90
+    /// Fraction of each touched column detached by one brush pass (0…1).
+    public static let brushReleaseFraction: Float = 0.55
+    /// Fraction of horizontal cursor velocity passed on to brushed snow (0…1).
+    public static let brushVelocityInherit: Float = 0.10
+    /// Maximum horizontal speed of brushed snow (pt/s).
+    public static let brushMaxHorizontalSpeed: Float = 110
+    /// Fraction of vertical cursor speed passed to brushed snow (0…1).
+    public static let brushVerticalVelocityInherit: Float = 0.30
+    /// Allowed vertical launch speed after brushing (pt/s, negative is downward).
+    public static let brushVerticalSpeedRange: ClosedRange<Float> = -180...460
+    /// Base upward kick of brushed snow when the cursor moves horizontally (pt/s).
+    public static let brushKick: Float = 70
 
     // MARK: Tick
 
