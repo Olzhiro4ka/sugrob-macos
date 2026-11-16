@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Updated source documentation to link to the architecture guide after removing the old
+  agent notes.
 - Space changes pause window updates until geometry settles, discard polls from the previous
   Space, and rebase snow without shedding. Missing windows are hidden on every poll, even
   when multiple polls complete between rendered frames.

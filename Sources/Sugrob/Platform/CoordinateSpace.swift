@@ -1,7 +1,7 @@
 import AppKit
 import SnowCore
 
-/// The single place for coordinate conversions (see CLAUDE.md, "Coordinate spaces").
+/// The single place for coordinate conversions (see docs/ARCHITECTURE.md, "Coordinates and surfaces").
 /// SnowCore works in AppKit global points, y up; the math lives in `SnowCore.CoordinateMath`.
 enum CoordinateSpace {
     /// Height of the primary display: the screen with the menu bar, whose AppKit origin is (0, 0).

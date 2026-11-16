@@ -1,4 +1,4 @@
-/// Debug flags parsed from the process arguments (see CLAUDE.md, "Commands").
+/// Debug flags parsed from the process arguments (see docs/ARCHITECTURE.md, "Build and diagnosis").
 public struct LaunchOptions: Equatable, Sendable {
     /// `--debug-surfaces`: draw detected surfaces, Dock frame and occlusion clipping.
     public var debugSurfaces = false

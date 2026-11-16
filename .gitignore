@@ -13,7 +13,6 @@ DerivedData/
 /.vscode/
 *.code-workspace
 /AGENTS.md
-/CLAUDE.md
 /.claude/
 /.codex/
 /graphify-out/
