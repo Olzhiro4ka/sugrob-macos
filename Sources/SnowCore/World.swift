@@ -10,6 +10,7 @@ public struct SnowPlow: Equatable, Sendable {
     public let y: Float
     /// Snow swept sideways out of the screen-edge cross-section (pt²).
     public var dischargedSnow: Float = 0
+    public var bladeLoad: Float = 0
     public var bladeX: Float { x + Config.plowBladeOffset }
 }
 
@@ -222,10 +223,11 @@ public final class World {
                         restDelay: Config.debrisLandingDelay, allowWindows: true)
         }
 
-        updatePlows(dt: dt)
         for cap in caps where cap.isPresent {
             cap.relax(dt: dt, spills: &spills)
         }
+
+        updatePlows(dt: dt)
 
         for spill in spills {
             debris.spawn(spill, rng: &rng)
@@ -293,10 +295,17 @@ public final class World {
             let cap = screenCaps[index]
             guard cap.isPresent else { continue }
             if let position = plows.firstIndex(where: { $0.screenIndex == index }) {
-                let oldX = plows[position].x
                 plows[position].x -= Config.plowSpeed * dt
                 let bladeX = plows[position].bladeX
-                plows[position].dischargedSnow += cap.clearSnow(from: oldX + Config.plowBladeOffset, to: bladeX)
+                // Sweep the whole footprint after settling so fresh deposits and lateral
+                // relaxation cannot leave snow beneath the vehicle.
+                let collected = cap.clearSnow(from: plows[position].x + Config.plowSize.x,
+                                              to: bladeX)
+                let available = plows[position].bladeLoad + collected
+                let retained = min(Config.plowLoadCapacity,
+                                   available / (1 + dt / Config.plowLoadResidence))
+                plows[position].bladeLoad = retained
+                plows[position].dischargedSnow += available - retained
                 if plows[position].x + Config.plowSize.x < screens[index].minX {
                     plows.remove(at: position)
                     plowLastRun[index] = time

@@ -598,6 +598,26 @@ struct WorldTests {
         #expect(world.plows[0].dischargedSnow > initialMass * 0.2)
     }
 
+    @Test func plowCarriesSnowAndLeavesItsFootprintClear() {
+        let world = makeWorld()
+        world.bottomSurface = .screen
+        world.instantSnow = true
+        world.setScreens([])
+        world.setScreens([screen])
+        for _ in 0..<150 { world.step(dt: 1 / 30) }
+        let plow = world.plows[0]
+        let cap = world.caps.first { $0.id == World.screenCapID }!
+        #expect(plow.bladeLoad > 0)
+        #expect(plow.bladeLoad <= Config.plowLoadCapacity)
+        #expect(plow.dischargedSnow > plow.bladeLoad)
+        for index in cap.heights.indices {
+            let x = cap.x(ofColumn: index)
+            if x >= plow.bladeX && x < plow.x + Config.plowSize.x {
+                #expect(cap.heights[index] == 0)
+            }
+        }
+    }
+
     @Test func disablingPlowStopsItWithoutErasingSnow() {
         let world = makeWorld()
         world.bottomSurface = .screen

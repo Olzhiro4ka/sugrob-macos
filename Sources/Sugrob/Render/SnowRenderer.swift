@@ -110,7 +110,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
                   let caps = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxCapSegments, options: .storageModeShared),
                   let debris = gpu.device.makeBuffer(length: vectorSize * 2 * Config.debrisCapacity, options: .storageModeShared),
                   let debug = gpu.device.makeBuffer(length: vectorSize * 2 * Self.maxDebugRects, options: .storageModeShared),
-                  let plows = gpu.device.makeBuffer(length: vectorSize * 16, options: .storageModeShared)
+                  let plows = gpu.device.makeBuffer(length: vectorSize * 32, options: .storageModeShared)
             else { return nil }
             slots.append(Slot(flakes: flakes, caps: caps, debris: debris, debug: debug,
                               plows: plows))
@@ -192,13 +192,14 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
     // MARK: Instance data
 
     private func writePlows(into buffer: MTLBuffer) -> Int {
-        let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: 16)
+        let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: 32)
         var count = 0
         for plow in world.plows where plow.screenIndex < 16 {
             let size = Config.plowSize
             guard screenRect.intersects(circleAt: SIMD2(plow.x + size.x / 2, plow.y + size.y / 2),
                                         radius: size.x) else { continue }
-            destination[count] = SIMD4(plow.x, plow.y, size.x, size.y)
+            destination[count * 2] = SIMD4(plow.x, plow.y, size.x, size.y)
+            destination[count * 2 + 1] = SIMD4(plow.bladeLoad, 0, 0, 0)
             count += 1
         }
         return count

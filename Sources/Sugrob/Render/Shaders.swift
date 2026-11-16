@@ -180,16 +180,20 @@ enum Shaders {
     struct PlowOut {
         float4 position [[position]];
         float2 uv;
+        float2 local;
+        float load;
     };
 
     vertex PlowOut plowVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
                               const device float4 *plows [[buffer(0)]],
                               constant Uniforms &u [[buffer(1)]]) {
-        float4 p = plows[iid];
+        float4 p = plows[iid * 2];
         float2 corner = float2((vid & 1) ? 1.0 : 0.0, (vid & 2) ? 1.0 : 0.0);
         PlowOut out;
-        out.uv = float2(corner.x, 1.0 - corner.y);
-        out.position = toClip(p.xy + corner * p.zw, u);
+        out.local = corner * (p.zw + float2(16, 0)) - float2(16, 0);
+        out.uv = float2(out.local.x / p.z, 1.0 - out.local.y / p.w);
+        out.load = plows[iid * 2 + 1].x;
+        out.position = toClip(p.xy + out.local, u);
         return out;
     }
 
@@ -197,7 +201,18 @@ enum Shaders {
                                 texture2d<float> sprite [[texture(0)]]) {
         constexpr sampler imageSampler(filter::linear, address::clamp_to_edge);
         float4 color = sprite.sample(imageSampler, in.uv);
+        if (in.uv.x < 0.0) color = float4(0);
         color.rgb *= color.a;
+        // Area of this triangular cross-section equals the simulated blade load.
+        float height = sqrt(max(in.load, 0.0));
+        float width = 2.0 * height;
+        float x = in.local.x - 4.0;
+        float y = in.local.y - 5.0;
+        float top = height * clamp(1.0 + x / max(width, 0.001), 0.0, 1.0);
+        float mask = smoothstep(-width, -width + 0.5, x) *
+                     (1.0 - smoothstep(-0.5, 0.0, x)) *
+                     step(0.0, y) * (1.0 - smoothstep(top - 0.5, top, y));
+        if (in.load > 0.01) color = mix(color, float4(0.94, 0.97, 1.0, 1.0), mask);
         return color;
     }
     """

@@ -114,6 +114,10 @@ public enum Config {
     public static let plowTriggerFraction: Float = 0.65
     /// Snowplow travel speed from right to left (pt/s).
     public static let plowSpeed: Float = 50
+    /// Residence time of collected snow at the blade (s).
+    public static let plowLoadResidence: Float = 0.22
+    /// Maximum visible blade load (pt²); excess exits sideways.
+    public static let plowLoadCapacity: Float = 90
     /// Displayed sprite dimensions and blade contact offset (pt).
     public static let plowSize = SIMD2<Float>(77, 45)
     public static let plowBladeOffset: Float = 4

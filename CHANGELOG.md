@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Snowplows retain a bounded, mass-based blade load before discharging it and clear
+  fresh snow beneath their footprint after surface settling.
 - The screen-edge snowplow is half the size and can be switched off in Settings or the menu.
   Its blade removes snow from the screen-edge heightmap by directing it sideways,
   leaving a clear path without building an oversized wall.
