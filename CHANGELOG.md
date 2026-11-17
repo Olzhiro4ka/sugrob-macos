@@ -47,6 +47,8 @@ All notable changes to this project are documented here. The format follows
 - Dock snow now tracks centred width changes as apps appear, disappear, or become recent; snow beyond either new edge falls off.
 
 ### Added
+- A Snow Accumulation switch in the menu and Settings keeps flakes falling without snow
+  collecting on windows, the Dock, or screen edges. Turning it off clears settled snow.
 - Bottom snow can settle on the Dock or the screen edge. A miniature toy snowplow drives in
   from the right and clears the screen edge when its snow gets deep.
 - Project skeleton: SwiftPM package (`SnowCore`, `Sugrob`, `SnowCoreTests`), Makefile,
