@@ -757,6 +757,34 @@ struct WorldTests {
         #expect(world.caps[0].mass == 0)
     }
 
+    @Test func fallingOnlyClearsAndPreventsAccumulationOnEverySurface() {
+        let world = makeWorld()
+        world.instantSnow = true
+        world.ingestWindows([WindowSample(id: 1, frame: window)])
+        world.setDock(Rect(x: 200, y: 3, width: 1066, height: 84))
+        #expect(world.settledMass > 0)
+
+        world.settlingEnabled = false
+        #expect(world.settledMass == 0)
+        world.bottomSurface = .screen
+        world.setScreens([])
+        world.setScreens([screen])
+        world.ingestWindows([WindowSample(id: 1, frame: window),
+                             WindowSample(id: 2, frame: window.offsetBy([900, 0]))])
+        run(world, seconds: 30)
+        #expect(world.flakes.count > 0)
+        #expect(world.caps.allSatisfy { $0.mass == 0 })
+        #expect(world.plows.isEmpty)
+
+        world.bottomSurface = .dock
+        run(world, seconds: 5)
+        #expect(world.caps.allSatisfy { $0.mass == 0 })
+
+        world.settlingEnabled = true
+        run(world, seconds: 30)
+        #expect(world.settledMass > 0)
+    }
+
     @Test func deterministicAccumulation() {
         func run() -> [Float] {
             let world = makeWorld()

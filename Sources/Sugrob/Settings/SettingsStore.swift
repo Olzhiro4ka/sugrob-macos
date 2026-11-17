@@ -55,6 +55,7 @@ extension Intensity {
 final class SettingsStore {
     private enum Key {
         static let snowEnabled = "snowEnabled"
+        static let settlingEnabled = "settlingEnabled"
         static let intensity = "intensity"
         static let snowOnWindows = "snowOnWindows"
         static let snowOnDock = "snowOnDock"
@@ -72,6 +73,7 @@ final class SettingsStore {
     @ObservationIgnored var onChange: (() -> Void)?
 
     var isSnowEnabled: Bool { didSet { save(isSnowEnabled, Key.snowEnabled) } }
+    var settlingEnabled: Bool { didSet { save(settlingEnabled, Key.settlingEnabled) } }
     var intensity: Intensity { didSet { save(intensity.rawValue, Key.intensity) } }
     var snowOnWindows: Bool { didSet { save(snowOnWindows, Key.snowOnWindows) } }
     var snowOnDock: Bool { didSet { save(snowOnDock, Key.snowOnDock) } }
@@ -90,6 +92,7 @@ final class SettingsStore {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.snowEnabled: true,
+            Key.settlingEnabled: true,
             Key.intensity: Intensity.medium.rawValue,
             Key.snowOnWindows: true,
             Key.snowOnDock: true,
@@ -102,6 +105,7 @@ final class SettingsStore {
             Key.preciseDock: false,
         ])
         isSnowEnabled = defaults.bool(forKey: Key.snowEnabled)
+        settlingEnabled = defaults.bool(forKey: Key.settlingEnabled)
         intensity = Intensity(rawValue: defaults.string(forKey: Key.intensity) ?? "") ?? .medium
         snowOnWindows = defaults.bool(forKey: Key.snowOnWindows)
         snowOnDock = defaults.bool(forKey: Key.snowOnDock)

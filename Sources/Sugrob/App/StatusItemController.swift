@@ -35,6 +35,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         menu.addItem(item("Snow", #selector(toggleSnow), on: settings.isSnowEnabled))
+        menu.addItem(item("Snow Accumulation", #selector(toggleAccumulation), on: settings.settlingEnabled))
 
         let intensity = NSMenuItem(title: "Intensity", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -46,15 +47,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         intensity.submenu = submenu
         menu.addItem(intensity)
 
-        menu.addItem(item("Snow on Windows", #selector(toggleWindows), on: settings.snowOnWindows))
+        let windows = item("Snow on Windows", #selector(toggleWindows), on: settings.snowOnWindows)
+        windows.isEnabled = settings.settlingEnabled
+        menu.addItem(windows)
         let bottom = NSMenuItem(title: "Bottom Snow", action: nil, keyEquivalent: "")
         let bottomMenu = NSMenu()
         bottomMenu.addItem(item("Dock", #selector(chooseDock), on: settings.bottomSurface == .dock))
         bottomMenu.addItem(item("Screen Edge", #selector(chooseScreen), on: settings.bottomSurface == .screen))
         bottom.submenu = bottomMenu
+        bottom.isEnabled = settings.settlingEnabled
         menu.addItem(bottom)
         let plow = item("Snowplow", #selector(toggleSnowplow), on: settings.snowplowEnabled)
-        plow.isEnabled = settings.bottomSurface == .screen
+        plow.isEnabled = settings.settlingEnabled && settings.bottomSurface == .screen
         menu.addItem(plow)
         menu.addItem(.separator())
         menu.addItem(item("Clear All Snow", #selector(clearSnow)))
@@ -82,6 +86,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func toggleSnowplow() { settings.snowplowEnabled.toggle() }
+    @objc private func toggleAccumulation() { settings.settlingEnabled.toggle() }
     @objc private func toggleWindows() { settings.snowOnWindows.toggle() }
     @objc private func chooseDock() { settings.bottomSurface = .dock }
     @objc private func chooseScreen() { settings.bottomSurface = .screen }

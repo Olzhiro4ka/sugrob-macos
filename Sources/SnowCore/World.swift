@@ -39,6 +39,10 @@ public final class World {
     public var instantSnow = false
     /// Whether flakes settle on windows.
     public var snowOnWindows = true
+    /// Whether falling snow can settle on any surface.
+    public var settlingEnabled = true {
+        didSet { if !settlingEnabled { clearSnow() } }
+    }
     /// Maximum drift height (pt), clamped to `Config.capMaxHeightRange`.
     public var maxDriftHeight: Float = Config.capMaxHeight {
         didSet {
@@ -104,7 +108,7 @@ public final class World {
                               frame: Rect(x: screen.minX, y: screen.minY - 2, width: screen.width, height: 2),
                               cornerRadius: 0, lumpPhase: Float(index) * 1.7,
                               maxHeight: maxDriftHeight)
-            if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
+            if instantSnow && settlingEnabled { cap.fill(fraction: Config.instantSnowFill) }
             cap.visible = [Interval(screen.minX, screen.maxX)]
             return cap
         }
@@ -128,7 +132,7 @@ public final class World {
             guard let entry = windows.entries[id] else { continue }
             let cap = SnowCap(id: id, frame: entry.frame, cornerRadius: windowCornerRadius,
                               lumpPhase: rng.nextUnit() * 2 * Float.pi, maxHeight: maxDriftHeight)
-            if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
+            if instantSnow && settlingEnabled { cap.fill(fraction: Config.instantSnowFill) }
             capsByID[id] = cap
         }
         for entry in changes.disappeared {
@@ -166,7 +170,7 @@ public final class World {
             if dockCap == nil {
                 let cap = SnowCap(id: Self.dockCapID, frame: frame, cornerRadius: Config.dockCornerRadius,
                                   lumpPhase: rng.nextUnit() * 2 * Float.pi, maxHeight: maxDriftHeight)
-                if instantSnow { cap.fill(fraction: Config.instantSnowFill) }
+                if instantSnow && settlingEnabled { cap.fill(fraction: Config.instantSnowFill) }
                 dockCap = cap
             }
         } else if let cap = dockCap {
@@ -219,6 +223,9 @@ public final class World {
     /// Removes all settled snow and debris.
     public func clearSnow() {
         for cap in caps { cap.clear() }
+        for cap in capsByID.values { cap.clear() }
+        for cap in screenCaps { cap.clear() }
+        dockCap?.clear()
         for dormant in dormantCaps.values { dormant.cap.clear() }
         plows.removeAll(keepingCapacity: true)
         debris.removeAll()
@@ -323,7 +330,7 @@ public final class World {
     }
 
     private func updatePlows(dt: Float) {
-        guard bottomSurface == .screen && snowplowEnabled else { return }
+        guard settlingEnabled && bottomSurface == .screen && snowplowEnabled else { return }
         for index in screenCaps.indices {
             let cap = screenCaps[index]
             guard cap.isPresent else { continue }
@@ -378,6 +385,7 @@ public final class World {
     /// between `previous` and `current`. Caps are checked front to back so the topmost wins.
     private func absorb(from previous: SIMD2<Float>, to current: SIMD2<Float>,
                         amount: Float, restDelay: Float, allowWindows: Bool) -> Bool {
+        guard settlingEnabled else { return false }
         for cap in caps.reversed() where cap.isPresent && !cap.visible.isEmpty {
             if !allowWindows && cap.id != Self.dockCapID && !screenCaps.contains(where: { $0 === cap }) {
                 continue

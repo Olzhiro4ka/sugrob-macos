@@ -10,6 +10,11 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Snow") {
+                Toggle("Snow accumulation", isOn: $settings.settlingEnabled)
+                Text("Turn off to keep snow falling without collecting anywhere.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Picker("Intensity", selection: $settings.intensity) {
                     ForEach(Intensity.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -37,12 +42,14 @@ struct SettingsView: View {
                 }
 
                 Toggle("Snow on windows", isOn: $settings.snowOnWindows)
+                    .disabled(!settings.settlingEnabled)
                 Picker("Bottom snow", selection: $settings.bottomSurface) {
                     Text("Dock").tag(BottomSurface.dock)
                     Text("Screen edge").tag(BottomSurface.screen)
                 }
+                .disabled(!settings.settlingEnabled)
                 Toggle("Snowplow", isOn: $settings.snowplowEnabled)
-                    .disabled(settings.bottomSurface != .screen)
+                    .disabled(!settings.settlingEnabled || settings.bottomSurface != .screen)
             }
 
             Section("Performance") {

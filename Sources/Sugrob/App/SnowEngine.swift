@@ -77,6 +77,7 @@ final class SnowEngine: NSObject {
     func apply(_ settings: SettingsStore?, preciseDockOverride: Bool = false) {
         guard let settings else { return }
         world.intensity = settings.intensity
+        world.settlingEnabled = settings.settlingEnabled
         world.snowOnWindows = settings.snowOnWindows
         if !settings.snowOnWindows {
             world.clearWindowSnow()
