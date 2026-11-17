@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Animated the snowplow’s rotating amber beacon.
+
 ### Fixed
 - Updated repository links after the GitHub rename to `sugrob-macos`.
 - Updated source documentation to link to the architecture guide after removing the old

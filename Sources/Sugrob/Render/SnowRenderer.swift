@@ -136,7 +136,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
         let capCount = writeCapSegments(into: slot.caps)
         let debrisCount = writeDebris(into: slot.debris)
         let debugCount = debugSurfaces ? writeDebugRects(into: slot.debug) : 0
-        let plowCount = writePlows(into: slot.plows)
+        let plowCount = writePlows(into: slot.plows, time: start)
         lastCapSegments = capCount
         let hasContent = flakeCount + capCount + debrisCount + debugCount + plowCount > 0
         if !hasContent && !lastFrameHadContent {
@@ -191,7 +191,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
 
     // MARK: Instance data
 
-    private func writePlows(into buffer: MTLBuffer) -> Int {
+    private func writePlows(into buffer: MTLBuffer, time: CFTimeInterval) -> Int {
         let destination = buffer.contents().bindMemory(to: SIMD4<Float>.self, capacity: 32)
         var count = 0
         for plow in world.plows where plow.screenIndex < 16 {
@@ -199,7 +199,7 @@ final class SnowRenderer: NSObject, MTKViewDelegate {
             guard screenRect.intersects(circleAt: SIMD2(plow.x + size.x / 2, plow.y + size.y / 2),
                                         radius: size.x) else { continue }
             destination[count * 2] = SIMD4(plow.x, plow.y, size.x, size.y)
-            destination[count * 2 + 1] = SIMD4(plow.bladeLoad, 0, 0, 0)
+            destination[count * 2 + 1] = SIMD4(plow.bladeLoad, Float(time.truncatingRemainder(dividingBy: 1.5) / 1.5), 0, 0)
             count += 1
         }
         return count

@@ -182,6 +182,7 @@ enum Shaders {
         float2 uv;
         float2 local;
         float load;
+        float beaconPhase;
     };
 
     vertex PlowOut plowVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
@@ -190,9 +191,11 @@ enum Shaders {
         float4 p = plows[iid * 2];
         float2 corner = float2((vid & 1) ? 1.0 : 0.0, (vid & 2) ? 1.0 : 0.0);
         PlowOut out;
-        out.local = corner * (p.zw + float2(16, 0)) - float2(16, 0);
+        // Leave space above the sprite for the beacon's glow.
+        out.local = corner * (p.zw + float2(16, 8)) - float2(16, 0);
         out.uv = float2(out.local.x / p.z, 1.0 - out.local.y / p.w);
         out.load = plows[iid * 2 + 1].x;
+        out.beaconPhase = plows[iid * 2 + 1].y;
         out.position = toClip(p.xy + out.local, u);
         return out;
     }
@@ -201,8 +204,20 @@ enum Shaders {
                                 texture2d<float> sprite [[texture(0)]]) {
         constexpr sampler imageSampler(filter::linear, address::clamp_to_edge);
         float4 color = sprite.sample(imageSampler, in.uv);
-        if (in.uv.x < 0.0) color = float4(0);
+        if (in.uv.x < 0.0 || in.uv.y < 0.0) color = float4(0);
+        // A rotating reflector produces a bright flash once per revolution.
+        float flash = pow(max(cos(in.beaconPhase * 6.2831853), 0.0), 3.0);
+        if (in.uv.x > 0.500 && in.uv.x < 0.570 && in.uv.y < 0.100 &&
+            color.r > 0.7 && color.g > 0.35 && color.b < 0.45) {
+            color.rgb = mix(float3(0.80, 0.28, 0.01), float3(1.0, 0.96, 0.55), flash);
+        }
         color.rgb *= color.a;
+        // Composite a soft amber halo behind the sprite, in premultiplied alpha.
+        float2 beaconCenter = float2(0.535, 0.055);
+        float2 beaconOffset = (in.uv - beaconCenter) * float2(77.0, 45.0);
+        float halo = (1.0 - smoothstep(2.0, 8.0, length(beaconOffset))) * flash * 0.65;
+        float haloAlpha = halo * (1.0 - color.a);
+        color += float4(float3(1.0, 0.55, 0.08) * haloAlpha, haloAlpha);
         // Area of this triangular cross-section equals the simulated blade load.
         float height = sqrt(max(in.load, 0.0));
         float width = 2.0 * height;
